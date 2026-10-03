@@ -2646,7 +2646,7 @@
     }
 
 // ================================================================
-// SMART TRUST WALLET AUTO-CONNECT & DIRECT ADDRESS SYSTEM
+// DIRECT TRUST WALLET MOBILE APP LAUNCH SYSTEM (NO QR CODE)
 // ================================================================
 
 // 1. Modal Control Functions
@@ -2676,87 +2676,66 @@ function closeWalletModal() {
     } catch (e) {}
 }
 
-// 2. Core Direct Connect Function
+// 2. Direct App Launch Function
 async function connectTrustWalletDirect() {
     const btn = document.getElementById('web3ConnectBtn');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Opening Trust Wallet...';
     }
 
     try {
-        const providerObj = window.trustwallet || window.ethereum;
+        // A) Trust Wallet Browser (Injected DApp Flow)
+        if (window.trustwallet || window.ethereum) {
+            const providerObj = window.trustwallet || window.ethereum;
+            const provider = new ethers.providers.Web3Provider(providerObj, "any");
 
-        // A) Trust Wallet Browser / Injected Provider DApp Flow
-        if (providerObj) {
-            // Permission Pop-up Trigger
-            const accounts = await providerObj.request({ method: 'eth_requestAccounts' });
-            
-            if (!accounts || !accounts.length) {
-                throw new Error("No address approved");
-            }
-
+            const accounts = await provider.send("eth_requestAccounts", []);
             const address = accounts[0];
 
-            // Auto Switch to BSC Network (0x38)
-            try {
-                await providerObj.request({
-                    method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x38' }]
-                });
-            } catch (switchErr) {
-                if (switchErr && (switchErr.code === 4902 || switchErr.code === -32603)) {
-                    try {
-                        await providerObj.request({
-                            method: 'wallet_addEthereumChain',
-                            params: [{
-                                chainId: '0x38',
-                                chainName: 'BNB Smart Chain',
-                                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                                rpcUrls: ['https://bsc-dataseed.binance.org/'],
-                                blockExplorerUrls: ['https://bscscan.com/']
-                            }]
-                        });
-                    } catch (e) {}
+            if (address) {
+                saveWalletAndUI(address);
+            }
+            return;
+        }
+
+        // B) Telegram / Mobile Chrome (Direct DeepLink to Open Trust Wallet App)
+        if (typeof window.WalletConnectProvider !== 'undefined') {
+            const wcProvider = new window.WalletConnectProvider.default({
+                rpc: { 56: 'https://bsc-dataseed.binance.org/' },
+                chainId: 56,
+                qrcode: false // QR Code পপআপ একদম বন্ধ করা হলো
+            });
+
+            // URI তৈরি হলে ডাইরেক্ট Trust Wallet অ্যাপ ওপেন করবে
+            wcProvider.connector.on("display_uri", (err, payload) => {
+                const uri = payload.params[0];
+                const trustDeepLink = "trust://wc?uri=" + encodeURIComponent(uri);
+                const fallbackLink = "https://link.trustwallet.com/wc?uri=" + encodeURIComponent(uri);
+
+                // Telegram WebApp or Mobile Browser Open
+                const tgApp = window.Telegram?.WebApp || window.tg;
+                if (tgApp && typeof tgApp.openLink === 'function') {
+                    tgApp.openLink(fallbackLink, { try_instant_view: false });
+                } else {
+                    window.location.href = trustDeepLink;
+                    setTimeout(() => {
+                        window.location.href = fallbackLink;
+                    }, 1200);
                 }
+            });
+
+            // Connection Establish
+            await wcProvider.enable();
+            const web3Provider = new ethers.providers.Web3Provider(wcProvider);
+            const signer = web3Provider.getSigner();
+            const address = await signer.getAddress();
+
+            if (address) {
+                saveWalletAndUI(address);
             }
-
-            // Save Address to Global Variable & LocalStorage
-            if (typeof walletAddress !== 'undefined') walletAddress = address;
-            window.walletAddress = address;
-            localStorage.setItem('adi_connected_wallet', address);
-            localStorage.removeItem('adi_pending_wallet_connect');
-
-            const shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
-
-            // Update UI Elements
-            const connAddrEl = document.getElementById('connectedWalletAddr');
-            if (connAddrEl) {
-                connAddrEl.textContent = shortAddress;
-                connAddrEl.classList.add('wallet-connected-state');
-            }
-
-            const curDisplay = document.getElementById('currentWalletDisplay');
-            const modalTxt = document.getElementById('modalWalletAddressText');
-            if (curDisplay) curDisplay.style.display = 'block';
-            if (modalTxt) modalTxt.textContent = shortAddress;
-
-            // Save to Firebase Database Immediately
-            const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
-            if (typeof database !== 'undefined' && activeUserId) {
-                try {
-                    await database.ref('users/' + activeUserId + '/walletAddress').set(address);
-                } catch(err){}
-            }
-
-            if (typeof showAlert === 'function') showAlert("Wallet Connected: " + shortAddress);
-            closeWalletModal();
-            if (typeof updateUI === 'function') updateUI();
-
         } else {
-            // B) External Browser / Telegram Flow -> Set Flag & DeepLink to Trust Wallet
-            localStorage.setItem('adi_pending_wallet_connect', 'true');
-            
+            // Web3 / WalletConnect SDK Load না হলে Fallback Link
             const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
             let currentUrl = window.location.href;
             if (activeUserId && !currentUrl.includes('user=')) {
@@ -2764,25 +2743,13 @@ async function connectTrustWalletDirect() {
                 currentUrl += sep + 'user=' + encodeURIComponent(activeUserId);
             }
 
-            const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + encodeURIComponent(currentUrl);
-
-            if (typeof showAlert === 'function') showAlert("Opening Trust Wallet...");
-
-            const tgApp = window.Telegram?.WebApp || window.tg;
-            if (tgApp && typeof tgApp.openLink === 'function') {
-                tgApp.openLink(trustDeepLink, { try_instant_view: false });
-            } else {
-                window.location.href = trustDeepLink;
-            }
+            const trustUrl = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + encodeURIComponent(currentUrl);
+            window.location.href = trustUrl;
         }
 
     } catch (err) {
-        console.error("Trust Wallet connection error:", err);
-        if (err && err.code === 4001) {
-            if (typeof showAlert === 'function') showAlert("Connection rejected by user.");
-        } else {
-            if (typeof showAlert === 'function') showAlert("Connection failed. Try again inside Trust Wallet browser.");
-        }
+        console.error("Trust Wallet Launch Error:", err);
+        if (typeof showAlert === 'function') showAlert("Connection cancelled or failed.");
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -2791,17 +2758,36 @@ async function connectTrustWalletDirect() {
     }
 }
 
-// 3. Auto-Trigger Connection when opened inside Trust Wallet Browser
-window.addEventListener('load', () => {
-    setTimeout(() => {
-        const isTrustOrEth = window.trustwallet || window.ethereum;
-        const isPending = localStorage.getItem('adi_pending_wallet_connect') === 'true';
-        
-        if (isTrustOrEth && isPending) {
-            connectTrustWalletDirect();
-        }
-    }, 800);
-});
+// Helper Function: Save Address & Update UI
+async function saveWalletAndUI(address) {
+    if (typeof walletAddress !== 'undefined') walletAddress = address;
+    window.walletAddress = address;
+
+    const shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
+
+    const connAddrEl = document.getElementById('connectedWalletAddr');
+    if (connAddrEl) {
+        connAddrEl.textContent = shortAddress;
+        connAddrEl.classList.add('wallet-connected-state');
+    }
+
+    const curDisplay = document.getElementById('currentWalletDisplay');
+    const modalTxt = document.getElementById('modalWalletAddressText');
+    if (curDisplay) curDisplay.style.display = 'block';
+    if (modalTxt) modalTxt.textContent = shortAddress;
+
+    // Firebase Save
+    const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
+    if (typeof database !== 'undefined' && activeUserId) {
+        try {
+            await database.ref('users/' + activeUserId + '/walletAddress').set(address);
+        } catch(e){}
+    }
+
+    if (typeof showAlert === 'function') showAlert("Wallet Connected: " + shortAddress);
+    closeWalletModal();
+    if (typeof updateUI === 'function') updateUI();
+}
 
 // Helpers
 function connectWeb3Wallet() {
@@ -2811,7 +2797,6 @@ function connectWeb3Wallet() {
 function autoConnectTrustWallet() {
     connectTrustWalletDirect();
 }
-
 
     // EXCHANGE MODAL SYSTEM
     function openExchangeModal() {
