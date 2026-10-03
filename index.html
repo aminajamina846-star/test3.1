@@ -2659,32 +2659,31 @@
     }
   
 // ==================================================
-// WEB3 / TRUST WALLET CONNECTION (SESSION SAFE FIX)
+// WEB3 / TRUST WALLET CONNECTION (CRASH-PROOF SAFE FIX)
 // ==================================================
-if (typeof walletAddress === 'undefined') {
-    var walletAddress = null;
-}
 
 async function autoConnectTrustWallet() {
-    const executeConnect = async () => {
+    var executeConnect = async function() {
         try {
-            if (walletAddress) {
-                if (typeof showAlert === 'function') showAlert("Wallet already connected: " + walletAddress);
+            if (typeof window.walletAddress !== 'undefined' && window.walletAddress) {
+                if (typeof showAlert === 'function') showAlert("Wallet already connected: " + window.walletAddress);
                 return;
             }
 
-            // ১. সাধারণ ব্রাউজারে (Chrome) ethereum না থাকলে ট্রাস্ট ওয়ালেট অ্যাপে পাঠাবে (URL-এ userId সহ)
+            // ১. ক্রোম বা সাধারণ ব্রাউজারে ethereum না থাকলে Trust Wallet অ্যাপে নিয়ে যাবে
             if (!window.ethereum && !window.trustwallet) {
-                let targetUrl = window.location.href;
+                var currentUrl = window.location.href;
                 
-                // URL-এ userId না থাকলে তা যুক্ত করে দেওয়া যাতে ব্যালেন্স/ডাটা না হারায়
-                if (typeof userId !== 'undefined' && userId && !targetUrl.includes('user=')) {
-                    const separator = targetUrl.includes('?') ? '&' : '?';
-                    targetUrl += separator + 'user=' + encodeURIComponent(userId);
+                // ইউজার ডাটা যাতে হারিয়ে না যায় সে জন্য LocalStorage ও URL-এ সেভ রাখা
+                if (typeof userId !== 'undefined' && userId) {
+                    try { localStorage.setItem('adi_user_id', userId); } catch(e){}
+                    if (!currentUrl.includes('user=')) {
+                        var sep = currentUrl.includes('?') ? '&' : '?';
+                        currentUrl += sep + 'user=' + encodeURIComponent(userId);
+                    }
                 }
 
-                const encodedUrl = encodeURIComponent(targetUrl);
-                const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + encodedUrl;
+                var trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + encodeURIComponent(currentUrl);
 
                 if (typeof tg !== 'undefined' && tg && tg.openLink) {
                     tg.openLink(trustDeepLink);
@@ -2694,21 +2693,21 @@ async function autoConnectTrustWallet() {
                 return;
             }
 
-            // ২. ট্রাস্ট ওয়ালেটের ইনসাইড ব্রাউজারে থাকলে সরাসরি কানেক্ট হবে
-            const ethereumProvider = window.ethereum || window.trustwallet;
-            const provider = new ethers.providers.Web3Provider(ethereumProvider);
+            // ২. Trust Wallet DApp ব্রাউজারের ভেতরে থাকলে
+            var ethProvider = window.ethereum || window.trustwallet;
+            var provider = new ethers.providers.Web3Provider(ethProvider);
             await provider.send("eth_requestAccounts", []);
 
-            // BSC Network Switch Logic
+            // BSC (BNB Smart Chain - Chain ID 56) Network Auto-Switch
             try {
-                await ethereumProvider.request({
+                await ethProvider.request({
                     method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x38' }],
+                    params: [{ chainId: '0x38' }]
                 });
             } catch (switchError) {
-                if (switchError.code === 4902 || switchError.code === -32603) {
+                if (switchError && (switchError.code === 4902 || switchError.code === -32603)) {
                     try {
-                        await ethereumProvider.request({
+                        await ethProvider.request({
                             method: 'wallet_addEthereumChain',
                             params: [{
                                 chainId: '0x38',
@@ -2716,7 +2715,7 @@ async function autoConnectTrustWallet() {
                                 nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
                                 rpcUrls: ['https://bsc-dataseed.binance.org/'],
                                 blockExplorerUrls: ['https://bscscan.com/']
-                            }],
+                            }]
                         });
                     } catch (addErr) {
                         console.error("BSC Add Error:", addErr);
@@ -2724,24 +2723,28 @@ async function autoConnectTrustWallet() {
                 }
             }
 
-            const signer = provider.getSigner();
-            const address = await signer.getAddress();
-            walletAddress = address;
+            var signer = provider.getSigner();
+            var address = await signer.getAddress();
+            
+            if (typeof walletAddress !== 'undefined') { walletAddress = address; }
+            window.walletAddress = address;
 
-            const shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
+            var shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
 
             // UI আপডেট
-            const connAddrEl = document.getElementById('connectedWalletAddr');
+            var connAddrEl = document.getElementById('connectedWalletAddr');
             if (connAddrEl) connAddrEl.textContent = shortAddress;
 
-            const curDisplay = document.getElementById('currentWalletDisplay');
-            const modalTxt = document.getElementById('modalWalletAddressText');
+            var curDisplay = document.getElementById('currentWalletDisplay');
+            var modalTxt = document.getElementById('modalWalletAddressText');
             if (curDisplay) curDisplay.style.display = 'block';
             if (modalTxt) modalTxt.textContent = shortAddress;
 
-            // ফায়ারবেস ডেটাবেজে সেভ
-            if (typeof database !== 'undefined' && typeof userId !== 'undefined') {
-                database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
+            // ফায়ারবেসে সেভ করা
+            var targetUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
+
+            if (typeof database !== 'undefined' && targetUserId) {
+                database.ref('users/' + targetUserId + '/walletAddress').set(address).then(function() {
                     if (typeof showAlert === 'function') showAlert("Wallet connected: " + shortAddress);
                     if (typeof closeWalletModal === 'function') closeWalletModal();
                     if (typeof updateUI === 'function') updateUI();
@@ -2769,10 +2772,10 @@ async function autoConnectTrustWallet() {
     }
 }
 
+// ব্যাকওয়ার্ড সাপোর্ট
 function connectWeb3Wallet() {
     autoConnectTrustWallet();
 }
-
 
 
     // EXCHANGE MODAL SYSTEM
