@@ -2659,11 +2659,11 @@
     }
 
 // --------------------------------------------------
-// 8. Trust Wallet Connect Function (Monetag Ad)
+// 8. Trust Wallet Connect Function (Monetag Ad Safe + BSC + Full UI Auto Update)
 // --------------------------------------------------
 async function autoConnectTrustWallet() {
-    showMonetagAd(async () => {
-        if (walletAddress) {
+    const runConnect = async () => {
+        if (typeof walletAddress !== 'undefined' && walletAddress) {
             showAlert("Wallet already connected: " + walletAddress);
             return;
         }
@@ -2672,29 +2672,89 @@ async function autoConnectTrustWallet() {
             try {
                 const provider = new ethers.providers.Web3Provider(window.ethereum);
                 await provider.send("eth_requestAccounts", []);
+
+                // ১. BSC (BNB Smart Chain) নেটওয়ার্কে সুইচ করার লজিক
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x38' }], // 0x38 = BSC Mainnet (56)
+                    });
+                } catch (switchError) {
+                    if (switchError.code === 4902 || switchError.code === -32603) {
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: '0x38',
+                                    chainName: 'BNB Smart Chain',
+                                    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                                    rpcUrls: ['https://bsc-dataseed.binance.org/'],
+                                    blockExplorerUrls: ['https://bscscan.com/']
+                                }],
+                            });
+                        } catch (addError) {
+                            console.error("BSC Network Add Error:", addError);
+                        }
+                    }
+                }
+
                 const signer = provider.getSigner();
                 const address = await signer.getAddress();
                 walletAddress = address;
 
-                database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
-                    showAlert("Trust Wallet connected: " + address);
-                    updateUI();
-                });
+                // ওয়ালেট এড্রেসটি সংক্ষিপ্ত করে দেখানো (যেমন: 0x1234...abcd)
+                const shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
+
+                // ২. স্ক্রিনের UI উপাদানগুলো আপডেট করা
+                const connAddrEl = document.getElementById('connectedWalletAddr');
+                if (connAddrEl) {
+                    connAddrEl.textContent = shortAddress;
+                }
+
+                const curDisplay = document.getElementById('currentWalletDisplay');
+                const modalTxt = document.getElementById('modalWalletAddressText');
+                if (curDisplay) curDisplay.style.display = 'block';
+                if (modalTxt) modalTxt.textContent = shortAddress;
+
+                // ৩. ফায়ারবেস ডেটাবেজে সেভ করা
+                if (typeof database !== 'undefined' && typeof userId !== 'undefined') {
+                    database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
+                        showAlert("Trust Wallet connected: " + shortAddress);
+                        
+                        // ৪. মোডাল পপআপ বন্ধ করা এবং UI রিফ্রেশ করা
+                        if (typeof closeWalletModal === 'function') closeWalletModal();
+                        if (typeof updateUI === 'function') updateUI();
+                    });
+                } else {
+                    showAlert("Trust Wallet connected: " + shortAddress);
+                    if (typeof closeWalletModal === 'function') closeWalletModal();
+                    if (typeof updateUI === 'function') updateUI();
+                }
+
             } catch (error) {
                 showAlert("Wallet Connection Cancelled or Failed!");
             }
         } else {
             const currentUrl = encodeURIComponent(window.location.href);
-            const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=60&url=' + currentUrl;
+            // BSC (BEP-20) এর জন্য coin_id=714
+            const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + currentUrl;
 
-            if (tg && tg.openLink) {
+            if (typeof tg !== 'undefined' && tg && tg.openLink) {
                 tg.openLink(trustDeepLink);
             } else {
                 window.location.href = trustDeepLink;
             }
         }
-    });
+    };
+
+    // Monetag Ad থাকলে এড দেখাবে, না থাকলে সরাসরি কানেক্ট হবে
+    if (typeof showMonetagAd === 'function') {
+        showMonetagAd(runConnect);
+    } else {
+        runConnect();
+    }
 }
+
 
     // EXCHANGE MODAL SYSTEM
     function openExchangeModal() {
