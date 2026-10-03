@@ -2657,22 +2657,22 @@
       const modal=document.getElementById('walletModal');
       if(modal) modal.style.display='none';
     }
-// --------------------------------------------------
-// WEB3 / TRUST WALLET CONNECTION (ULTIMATE FIX)
-// --------------------------------------------------
-if (typeof walletAddress === 'undefined') {
-    var walletAddress = null;
-}
+  
+// ==================================================
+// WEB3 / TRUST WALLET CONNECTION
+// ==================================================
+let discoveredWalletProviders = [];
+let selectedWalletProvider = null;
 
 async function autoConnectTrustWallet() {
     const executeConnect = async () => {
         try {
-            if (walletAddress) {
+            if (typeof walletAddress !== 'undefined' && walletAddress) {
                 if (typeof showAlert === 'function') showAlert("Wallet already connected: " + walletAddress);
                 return;
             }
 
-            // সাধারণ মোবাইল ব্রাউজার বা টেলিগ্রাম থেকে ট্রাস্ট ওয়ালেট ডিপলিংক
+            // মোবাইল ব্রাউজার বা টেলিগ্রামের জন্য ট্রাস্ট ওয়ালেট ডিপলিংক
             if (!window.ethereum) {
                 const currentUrl = encodeURIComponent(window.location.href);
                 const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + currentUrl;
@@ -2685,15 +2685,14 @@ async function autoConnectTrustWallet() {
                 return;
             }
 
-            // ইনজেক্টেড ওয়ালেট (Trust Wallet / MetaMask)
             const provider = new ethers.providers.Web3Provider(window.ethereum);
             await provider.send("eth_requestAccounts", []);
 
-            // BSC (BNB Smart Chain) নেটওয়ার্কে সুইচ/যুক্ত করা
+            // BSC (BNB Smart Chain) নেটওয়ার্কে সুইচ/অ্যাড করার লজিক
             try {
                 await window.ethereum.request({
                     method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x38' }], // Chain ID 56 (BSC)
+                    params: [{ chainId: '0x38' }], // Chain ID 56
                 });
             } catch (switchError) {
                 if (switchError.code === 4902 || switchError.code === -32603) {
@@ -2709,7 +2708,7 @@ async function autoConnectTrustWallet() {
                             }],
                         });
                     } catch (addErr) {
-                        console.error("BSC add error:", addErr);
+                        console.error("BSC Add Error:", addErr);
                     }
                 }
             }
@@ -2748,7 +2747,7 @@ async function autoConnectTrustWallet() {
         }
     };
 
-    // এড থাকলে এড দেখাবে, না থাকলে সরাসরি কানেক্ট করবে
+    // Monetag Ad থাকলে এড দেখাবে, না থাকলে সরাসরি কানেক্ট করবে
     try {
         if (typeof showMonetagAd === 'function') {
             showMonetagAd(executeConnect);
@@ -2760,7 +2759,7 @@ async function autoConnectTrustWallet() {
     }
 }
 
-// পুরোনো বাটন ক্লিকের ব্যাকওয়ার্ড সাপোর্ট
+// পুরোনো ফাংশন কলের সাথে ব্যাকওয়ার্ড সাপোর্ট
 function connectWeb3Wallet() {
     autoConnectTrustWallet();
 }
