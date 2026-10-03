@@ -2661,78 +2661,7 @@
       if(modal) modal.style.display='none';
     }
   
-// ================================================================
-// ADI$ WALLET CONNECTION — TELEGRAM MINI APP + TRUST WALLET (WC v2)
-// ================================================================
 
-const WALLETCONNECT_PROJECT_ID = '59a5e728ce74c2a6acd9946d349fd0f4';
-const ADI_WALLET_CHAIN_ID = 56; // BNB Smart Chain (BSC)
-const ADI_WALLET_CHAIN_HEX = '0x38';
-const ADI_BSC_RPC = 'https://bsc-dataseed.binance.org/';
-
-let walletConnectProvider = null;
-let selectedWalletProvider = null;
-
-function walletConnectConfigured() {
-    return !!WALLETCONNECT_PROJECT_ID && WALLETCONNECT_PROJECT_ID !== 'YOUR_WALLETCONNECT_PROJECT_ID';
-}
-
-function walletProviderClass() {
-    return window['@walletconnect/ethereum-provider']?.EthereumProvider || window.EthereumProvider || null;
-}
-
-// ১. WalletConnect V2 ইনিশিয়ালাইজেশন
-async function initWalletConnectV2() {
-    if (!walletConnectConfigured()) {
-        throw new Error('WalletConnect Project ID is not configured.');
-    }
-
-    if (walletConnectProvider) return walletConnectProvider;
-
-    const EthereumProvider = walletProviderClass();
-
-    if (!EthereumProvider || typeof EthereumProvider.init !== 'function') {
-        throw new Error('WalletConnect v2 library build missing in HTML.');
-    }
-
-    walletConnectProvider = await EthereumProvider.init({
-        projectId: WALLETCONNECT_PROJECT_ID,
-        chains: [ADI_WALLET_CHAIN_ID],
-        optionalChains: [1],
-        rpcMap: {
-            56: ADI_BSC_RPC,
-            1: 'https://cloudflare-eth.com'
-        },
-        showQrModal: false, // টেলিগ্রাম মিনি অ্যাপে সরাসরি ট্রাস্ট ওয়ালেটে পাঠাবে
-        metadata: {
-            name: 'ADI$ Airdrop & Mining App',
-            description: 'ADI$ Telegram Mini App wallet connection',
-            url: window.location.origin,
-            icons: []
-        }
-    });
-
-    return walletConnectProvider;
-}
-
-// ২. ট্রাস্ট ওয়ালেট ডিপলিংক ওপেন করা (টেলিগ্রাম সেফ)
-async function openTrustWalletWalletConnectURI(uri) {
-    if (!uri) throw new Error('WalletConnect URI missing.');
-
-    const trustWC = 'https://link.trustwallet.com/wc?uri=' + encodeURIComponent(uri);
-
-    // Telegram WebApp SDK সাপোর্ট
-    const tgApp = window.Telegram?.WebApp || window.tg;
-    if (tgApp && typeof tgApp.openLink === 'function') {
-        tgApp.openLink(trustWC, { try_instant_view: false });
-        return;
-    }
-
-    try {
-        window.open(trustWC, '_blank', 'noopener,noreferrer');
-    } catch (_) {
-        window.location.href = trustWC;
-    }
 // ================================================================
 // ADI$ TRUST WALLET CONNECTION (TELEGRAM & DAPP SAFE FIX)
 // ================================================================
