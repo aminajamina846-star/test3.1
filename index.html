@@ -2659,23 +2659,32 @@
     }
   
 // ==================================================
-// WEB3 / TRUST WALLET CONNECTION
+// WEB3 / TRUST WALLET CONNECTION (SESSION SAFE FIX)
 // ==================================================
-let discoveredWalletProviders = [];
-let selectedWalletProvider = null;
+if (typeof walletAddress === 'undefined') {
+    var walletAddress = null;
+}
 
 async function autoConnectTrustWallet() {
     const executeConnect = async () => {
         try {
-            if (typeof walletAddress !== 'undefined' && walletAddress) {
+            if (walletAddress) {
                 if (typeof showAlert === 'function') showAlert("Wallet already connected: " + walletAddress);
                 return;
             }
 
-            // মোবাইল ব্রাউজার বা টেলিগ্রামের জন্য ট্রাস্ট ওয়ালেট ডিপলিংক
-            if (!window.ethereum) {
-                const currentUrl = encodeURIComponent(window.location.href);
-                const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + currentUrl;
+            // ১. সাধারণ ব্রাউজারে (Chrome) ethereum না থাকলে ট্রাস্ট ওয়ালেট অ্যাপে পাঠাবে (URL-এ userId সহ)
+            if (!window.ethereum && !window.trustwallet) {
+                let targetUrl = window.location.href;
+                
+                // URL-এ userId না থাকলে তা যুক্ত করে দেওয়া যাতে ব্যালেন্স/ডাটা না হারায়
+                if (typeof userId !== 'undefined' && userId && !targetUrl.includes('user=')) {
+                    const separator = targetUrl.includes('?') ? '&' : '?';
+                    targetUrl += separator + 'user=' + encodeURIComponent(userId);
+                }
+
+                const encodedUrl = encodeURIComponent(targetUrl);
+                const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + encodedUrl;
 
                 if (typeof tg !== 'undefined' && tg && tg.openLink) {
                     tg.openLink(trustDeepLink);
@@ -2685,19 +2694,21 @@ async function autoConnectTrustWallet() {
                 return;
             }
 
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            // ২. ট্রাস্ট ওয়ালেটের ইনসাইড ব্রাউজারে থাকলে সরাসরি কানেক্ট হবে
+            const ethereumProvider = window.ethereum || window.trustwallet;
+            const provider = new ethers.providers.Web3Provider(ethereumProvider);
             await provider.send("eth_requestAccounts", []);
 
-            // BSC (BNB Smart Chain) নেটওয়ার্কে সুইচ/অ্যাড করার লজিক
+            // BSC Network Switch Logic
             try {
-                await window.ethereum.request({
+                await ethereumProvider.request({
                     method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x38' }], // Chain ID 56
+                    params: [{ chainId: '0x38' }],
                 });
             } catch (switchError) {
                 if (switchError.code === 4902 || switchError.code === -32603) {
                     try {
-                        await window.ethereum.request({
+                        await ethereumProvider.request({
                             method: 'wallet_addEthereumChain',
                             params: [{
                                 chainId: '0x38',
@@ -2747,7 +2758,6 @@ async function autoConnectTrustWallet() {
         }
     };
 
-    // Monetag Ad থাকলে এড দেখাবে, না থাকলে সরাসরি কানেক্ট করবে
     try {
         if (typeof showMonetagAd === 'function') {
             showMonetagAd(executeConnect);
@@ -2759,7 +2769,6 @@ async function autoConnectTrustWallet() {
     }
 }
 
-// পুরোনো ফাংশন কলের সাথে ব্যাকওয়ার্ড সাপোর্ট
 function connectWeb3Wallet() {
     autoConnectTrustWallet();
 }
