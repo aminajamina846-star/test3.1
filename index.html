@@ -15,10 +15,9 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- Ethers.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-<!-- WalletConnect v2 Ethereum Provider -->
-<script src="https://unpkg.com/@walletconnect/ethereum-provider@2.10.1/dist/index.umd.min.js"></script>
+<script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+<script src="https://unpkg.com/web3modal@1.9.12/dist/index.js"></script>
 
 
   <!-- Google Fonts & Font Awesome Icons -->
@@ -2645,17 +2644,16 @@
         showAlert('Boost could not be completed. Please try again.','Boost Error');
       } finally { if (boostBtn) boostBtn.style.pointerEvents = ''; }
     }
-            
-// WALLET MODAL & TRUST WALLET CONNECTION (100% WORKING & FIXED)
+
+// ================================================================
+// SMART TRUST WALLET AUTO-CONNECT & DIRECT ADDRESS SYSTEM
 // ================================================================
 
-// 1. Wallet Modal Open Function (Profile & Home Button Click)
+// 1. Modal Control Functions
 function openWalletModal() {
     try {
         const modal = document.getElementById('walletModal');
-        if (modal) {
-            modal.style.display = 'flex';
-        }
+        if (modal) modal.style.display = 'flex';
         
         const cur = document.getElementById('currentWalletDisplay');
         const txt = document.getElementById('modalWalletAddressText');
@@ -2668,12 +2666,9 @@ function openWalletModal() {
         } else {
             if (cur) cur.style.display = 'none';
         }
-    } catch (e) {
-        console.error("Error opening modal:", e);
-    }
+    } catch (e) {}
 }
 
-// 2. Wallet Modal Close Function
 function closeWalletModal() {
     try {
         const modal = document.getElementById('walletModal');
@@ -2681,7 +2676,7 @@ function closeWalletModal() {
     } catch (e) {}
 }
 
-// 3. Direct Trust Wallet Connection Function
+// 2. Core Direct Connect Function
 async function connectTrustWalletDirect() {
     const btn = document.getElementById('web3ConnectBtn');
     if (btn) {
@@ -2690,33 +2685,27 @@ async function connectTrustWalletDirect() {
     }
 
     try {
-        // Ethers Library Check
-        if (typeof ethers === 'undefined') {
-            if (typeof showAlert === 'function') showAlert("Web3 library loading, please try again in 3 seconds.");
-            return;
-        }
-
         const providerObj = window.trustwallet || window.ethereum;
 
+        // A) Trust Wallet Browser / Injected Provider DApp Flow
         if (providerObj) {
-            const provider = new ethers.providers.Web3Provider(providerObj, "any");
-
-            // Request Accounts (Permission Pop-up)
-            const accounts = await provider.send("eth_requestAccounts", []);
-            const address = accounts ? accounts[0] : null;
-
-            if (!address) {
-                throw new Error("No address returned from wallet");
+            // Permission Pop-up Trigger
+            const accounts = await providerObj.request({ method: 'eth_requestAccounts' });
+            
+            if (!accounts || !accounts.length) {
+                throw new Error("No address approved");
             }
 
-            // BNB Smart Chain (0x38) Auto Switch
+            const address = accounts[0];
+
+            // Auto Switch to BSC Network (0x38)
             try {
                 await providerObj.request({
                     method: 'wallet_switchEthereumChain',
                     params: [{ chainId: '0x38' }]
                 });
-            } catch (switchError) {
-                if (switchError && (switchError.code === 4902 || switchError.code === -32603)) {
+            } catch (switchErr) {
+                if (switchErr && (switchErr.code === 4902 || switchErr.code === -32603)) {
                     try {
                         await providerObj.request({
                             method: 'wallet_addEthereumChain',
@@ -2732,20 +2721,15 @@ async function connectTrustWalletDirect() {
                 }
             }
 
-            // Message Signature Confirmation
-            try {
-                const signer = provider.getSigner();
-                await signer.signMessage("Confirm connection to ADI$ WebApp");
-            } catch (signErr) {
-                console.warn("Signature skipped:", signErr);
-            }
-
-            // Global Variables & UI Update
+            // Save Address to Global Variable & LocalStorage
             if (typeof walletAddress !== 'undefined') walletAddress = address;
             window.walletAddress = address;
+            localStorage.setItem('adi_connected_wallet', address);
+            localStorage.removeItem('adi_pending_wallet_connect');
 
             const shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
 
+            // Update UI Elements
             const connAddrEl = document.getElementById('connectedWalletAddr');
             if (connAddrEl) {
                 connAddrEl.textContent = shortAddress;
@@ -2757,12 +2741,12 @@ async function connectTrustWalletDirect() {
             if (curDisplay) curDisplay.style.display = 'block';
             if (modalTxt) modalTxt.textContent = shortAddress;
 
-            // Firebase Save
+            // Save to Firebase Database Immediately
             const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
             if (typeof database !== 'undefined' && activeUserId) {
                 try {
                     await database.ref('users/' + activeUserId + '/walletAddress').set(address);
-                } catch(e){}
+                } catch(err){}
             }
 
             if (typeof showAlert === 'function') showAlert("Wallet Connected: " + shortAddress);
@@ -2770,7 +2754,9 @@ async function connectTrustWalletDirect() {
             if (typeof updateUI === 'function') updateUI();
 
         } else {
-            // App Injected Provider Na Thakle Trust Wallet App-e Direct DeepLink
+            // B) External Browser / Telegram Flow -> Set Flag & DeepLink to Trust Wallet
+            localStorage.setItem('adi_pending_wallet_connect', 'true');
+            
             const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
             let currentUrl = window.location.href;
             if (activeUserId && !currentUrl.includes('user=')) {
@@ -2795,7 +2781,7 @@ async function connectTrustWalletDirect() {
         if (err && err.code === 4001) {
             if (typeof showAlert === 'function') showAlert("Connection rejected by user.");
         } else {
-            if (typeof showAlert === 'function') showAlert("Wallet Connection Failed!");
+            if (typeof showAlert === 'function') showAlert("Connection failed. Try again inside Trust Wallet browser.");
         }
     } finally {
         if (btn) {
@@ -2805,7 +2791,19 @@ async function connectTrustWalletDirect() {
     }
 }
 
-// Button Alias Helper Functions
+// 3. Auto-Trigger Connection when opened inside Trust Wallet Browser
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        const isTrustOrEth = window.trustwallet || window.ethereum;
+        const isPending = localStorage.getItem('adi_pending_wallet_connect') === 'true';
+        
+        if (isTrustOrEth && isPending) {
+            connectTrustWalletDirect();
+        }
+    }, 800);
+});
+
+// Helpers
 function connectWeb3Wallet() {
     connectTrustWalletDirect();
 }
@@ -2813,6 +2811,7 @@ function connectWeb3Wallet() {
 function autoConnectTrustWallet() {
     connectTrustWalletDirect();
 }
+
 
     // EXCHANGE MODAL SYSTEM
     function openExchangeModal() {
