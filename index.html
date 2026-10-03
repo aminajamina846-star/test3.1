@@ -2658,121 +2658,121 @@
       if(modal) modal.style.display='none';
     }
   
-// ==================================================
-// WEB3 / TRUST WALLET CONNECTION (CRASH-PROOF SAFE FIX)
-// ==================================================
-
+// --------------------------------------------------
+// 8. Trust Wallet Connect Function (Monetag Ad Safe + BSC + Full UI Auto Update)
+// --------------------------------------------------
 async function autoConnectTrustWallet() {
-    var executeConnect = async function() {
+    var runConnect = async function() {
         try {
-            if (typeof window.walletAddress !== 'undefined' && window.walletAddress) {
-                if (typeof showAlert === 'function') showAlert("Wallet already connected: " + window.walletAddress);
+            // ১. ওয়ালেট আগে থেকে কানেক্ট করা আছে কি না চেক
+            var currentAddr = (typeof walletAddress !== 'undefined' && walletAddress) ? walletAddress : (window.walletAddress || null);
+            if (currentAddr) {
+                if (typeof showAlert === 'function') showAlert("Wallet already connected: " + currentAddr);
                 return;
             }
 
-            // ১. ক্রোম বা সাধারণ ব্রাউজারে ethereum না থাকলে Trust Wallet অ্যাপে নিয়ে যাবে
-            if (!window.ethereum && !window.trustwallet) {
-                var currentUrl = window.location.href;
-                
-                // ইউজার ডাটা যাতে হারিয়ে না যায় সে জন্য LocalStorage ও URL-এ সেভ রাখা
-                if (typeof userId !== 'undefined' && userId) {
-                    try { localStorage.setItem('adi_user_id', userId); } catch(e){}
-                    if (!currentUrl.includes('user=')) {
-                        var sep = currentUrl.includes('?') ? '&' : '?';
-                        currentUrl += sep + 'user=' + encodeURIComponent(userId);
+            var ethProvider = window.ethereum || window.trustwallet;
+
+            if (ethProvider) {
+                var provider = new ethers.providers.Web3Provider(ethProvider);
+                await provider.send("eth_requestAccounts", []);
+
+                // ২. BSC (BNB Smart Chain) নেটওয়ার্কে সুইচ করার লজিক
+                try {
+                    await ethProvider.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x38' }] // 0x38 = BSC Mainnet (56)
+                    });
+                } catch (switchError) {
+                    if (switchError && (switchError.code === 4902 || switchError.code === -32603)) {
+                        try {
+                            await ethProvider.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: '0x38',
+                                    chainName: 'BNB Smart Chain',
+                                    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                                    rpcUrls: ['https://bsc-dataseed.binance.org/'],
+                                    blockExplorerUrls: ['https://bscscan.com/']
+                                }]
+                            });
+                        } catch (addError) {
+                            console.error("BSC Network Add Error:", addError);
+                        }
                     }
                 }
 
-                var trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + encodeURIComponent(currentUrl);
+                var signer = provider.getSigner();
+                var address = await signer.getAddress();
 
-                if (typeof tg !== 'undefined' && tg && tg.openLink) {
+                if (typeof walletAddress !== 'undefined') {
+                    walletAddress = address;
+                }
+                window.walletAddress = address;
+
+                // ওয়ালেট এড্রেসটি সংক্ষিপ্ত করা (যেমন: 0x1234...abcd)
+                var shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
+
+                // ৩. স্ক্রিনের UI উপাদানগুলো আপডেট করা
+                var connAddrEl = document.getElementById('connectedWalletAddr');
+                if (connAddrEl) connAddrEl.textContent = shortAddress;
+
+                var curDisplay = document.getElementById('currentWalletDisplay');
+                var modalTxt = document.getElementById('modalWalletAddressText');
+                if (curDisplay) curDisplay.style.display = 'block';
+                if (modalTxt) modalTxt.textContent = shortAddress;
+
+                // ৪. ফায়ারবেস ডেটাবেজে সেভ করা
+                var activeUserId = (typeof userId !== 'undefined' && userId) ? userId : null;
+
+                if (typeof database !== 'undefined' && activeUserId) {
+                    database.ref('users/' + activeUserId + '/walletAddress').set(address).then(function() {
+                        if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
+                        if (typeof closeWalletModal === 'function') closeWalletModal();
+                        if (typeof updateUI === 'function') updateUI();
+                    }).catch(function(err) {
+                        if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
+                        if (typeof closeWalletModal === 'function') closeWalletModal();
+                        if (typeof updateUI === 'function') updateUI();
+                    });
+                } else {
+                    if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
+                    if (typeof closeWalletModal === 'function') closeWalletModal();
+                    if (typeof updateUI === 'function') updateUI();
+                }
+
+            } else {
+                // ব্রাউজারে ethereum না থাকলে ডিপলিংক
+                var currentUrl = encodeURIComponent(window.location.href);
+                var trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + currentUrl;
+
+                if (typeof tg !== 'undefined' && tg && typeof tg.openLink === 'function') {
                     tg.openLink(trustDeepLink);
+                } else if (typeof Telegram !== 'undefined' && Telegram.WebApp && typeof Telegram.WebApp.openLink === 'function') {
+                    Telegram.WebApp.openLink(trustDeepLink);
                 } else {
                     window.location.href = trustDeepLink;
                 }
-                return;
             }
-
-            // ২. Trust Wallet DApp ব্রাউজারের ভেতরে থাকলে
-            var ethProvider = window.ethereum || window.trustwallet;
-            var provider = new ethers.providers.Web3Provider(ethProvider);
-            await provider.send("eth_requestAccounts", []);
-
-            // BSC (BNB Smart Chain - Chain ID 56) Network Auto-Switch
-            try {
-                await ethProvider.request({
-                    method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x38' }]
-                });
-            } catch (switchError) {
-                if (switchError && (switchError.code === 4902 || switchError.code === -32603)) {
-                    try {
-                        await ethProvider.request({
-                            method: 'wallet_addEthereumChain',
-                            params: [{
-                                chainId: '0x38',
-                                chainName: 'BNB Smart Chain',
-                                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                                rpcUrls: ['https://bsc-dataseed.binance.org/'],
-                                blockExplorerUrls: ['https://bscscan.com/']
-                            }]
-                        });
-                    } catch (addErr) {
-                        console.error("BSC Add Error:", addErr);
-                    }
-                }
-            }
-
-            var signer = provider.getSigner();
-            var address = await signer.getAddress();
-            
-            if (typeof walletAddress !== 'undefined') { walletAddress = address; }
-            window.walletAddress = address;
-
-            var shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
-
-            // UI আপডেট
-            var connAddrEl = document.getElementById('connectedWalletAddr');
-            if (connAddrEl) connAddrEl.textContent = shortAddress;
-
-            var curDisplay = document.getElementById('currentWalletDisplay');
-            var modalTxt = document.getElementById('modalWalletAddressText');
-            if (curDisplay) curDisplay.style.display = 'block';
-            if (modalTxt) modalTxt.textContent = shortAddress;
-
-            // ফায়ারবেসে সেভ করা
-            var targetUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
-
-            if (typeof database !== 'undefined' && targetUserId) {
-                database.ref('users/' + targetUserId + '/walletAddress').set(address).then(function() {
-                    if (typeof showAlert === 'function') showAlert("Wallet connected: " + shortAddress);
-                    if (typeof closeWalletModal === 'function') closeWalletModal();
-                    if (typeof updateUI === 'function') updateUI();
-                });
-            } else {
-                if (typeof showAlert === 'function') showAlert("Wallet connected: " + shortAddress);
-                if (typeof closeWalletModal === 'function') closeWalletModal();
-                if (typeof updateUI === 'function') updateUI();
-            }
-
-        } catch (err) {
-            console.error("Wallet Connection Error:", err);
-            if (typeof showAlert === 'function') showAlert("Connection cancelled or failed!");
+        } catch (error) {
+            console.error("Wallet Connection Error:", error);
+            if (typeof showAlert === 'function') showAlert("Wallet Connection Cancelled or Failed!");
         }
     };
 
+    // Monetag Ad চেক ও সেফ এক্সিকিউশন
     try {
         if (typeof showMonetagAd === 'function') {
-            showMonetagAd(executeConnect);
+            showMonetagAd(runConnect);
         } else {
-            await executeConnect();
+            runConnect();
         }
     } catch (e) {
-        await executeConnect();
+        runConnect();
     }
 }
 
-// ব্যাকওয়ার্ড সাপোর্ট
+// পুরোনো বাটন ক্লিকের জন্য ব্যাকওয়ার্ড সাপোর্ট
 function connectWeb3Wallet() {
     autoConnectTrustWallet();
 }
