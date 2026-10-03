@@ -2646,11 +2646,40 @@
     }
 
 
-
 // ================================================================
-// TRUST WALLET DIRECT & CLEAN CONNECTION SYSTEM
+// COMPLETE WALLET MODAL & TRUST WALLET CONNECTION SYSTEM
 // ================================================================
 
+// 1. Modal Open & Close Functions (বাটন ক্লিক করে পপআপ ওপেন করার জন্য জরুরি)
+function openWalletModal() {
+    try {
+        const modal = document.getElementById('walletModal');
+        if (modal) modal.style.display = 'flex';
+        
+        const cur = document.getElementById('currentWalletDisplay');
+        const txt = document.getElementById('modalWalletAddressText');
+        const currentAddr = (typeof walletAddress !== 'undefined' && walletAddress) ? walletAddress : window.walletAddress;
+        
+        if (currentAddr) {
+            const shortAddr = currentAddr.substring(0, 6) + '...' + currentAddr.slice(-4);
+            if (cur) cur.style.display = 'block';
+            if (txt) txt.textContent = shortAddr;
+        } else {
+            if (cur) cur.style.display = 'none';
+        }
+    } catch (e) {
+        console.error("Error opening modal:", e);
+    }
+}
+
+function closeWalletModal() {
+    try {
+        const modal = document.getElementById('walletModal');
+        if (modal) modal.style.display = 'none';
+    } catch (e) {}
+}
+
+// 2. Direct Trust Wallet Connection Function
 async function connectTrustWalletDirect() {
     const btn = document.getElementById('web3ConnectBtn');
     if (btn) {
@@ -2659,7 +2688,6 @@ async function connectTrustWalletDirect() {
     }
 
     try {
-        // Direct Injected Provider Check (Trust Wallet / MetaMask)
         const providerObj = window.trustwallet || window.ethereum;
 
         if (providerObj) {
@@ -2668,7 +2696,7 @@ async function connectTrustWalletDirect() {
             const address = accounts ? accounts[0] : null;
 
             if (address) {
-                // Auto Switch to BNB Smart Chain Network (0x38)
+                // Auto Switch to BSC Network (0x38)
                 try {
                     await providerObj.request({
                         method: 'wallet_switchEthereumChain',
@@ -2694,7 +2722,7 @@ async function connectTrustWalletDirect() {
                 saveWalletAndUI(address);
             }
         } else {
-            // Mobile DeepLink for opening direct in Trust Wallet DApp Browser
+            // Mobile DeepLink for opening in Trust Wallet Browser
             const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
             let currentUrl = window.location.href;
             if (activeUserId && !currentUrl.includes('user=')) {
@@ -2724,6 +2752,7 @@ async function connectTrustWalletDirect() {
     }
 }
 
+// 3. Save Wallet & UI Update Helper
 async function saveWalletAndUI(address) {
     if (typeof walletAddress !== 'undefined') walletAddress = address;
     window.walletAddress = address;
@@ -2749,9 +2778,19 @@ async function saveWalletAndUI(address) {
     }
 
     if (typeof showAlert === 'function') showAlert("Wallet Connected: " + shortAddress);
-    if (typeof closeWalletModal === 'function') closeWalletModal();
+    closeWalletModal();
     if (typeof updateUI === 'function') updateUI();
-    }
+}
+
+// Helpers
+function connectWeb3Wallet() {
+    connectTrustWalletDirect();
+}
+
+function autoConnectTrustWallet() {
+    connectTrustWalletDirect();
+}
+
       
     // EXCHANGE MODAL SYSTEM
     function openExchangeModal() {
