@@ -2658,112 +2658,43 @@
       if(modal) modal.style.display='none';
     }
 
-    // WEB3 / TRUST WALLET CONNECTION
-    let discoveredWalletProviders = [];
-    let selectedWalletProvider = null;
+// --------------------------------------------------
+// 8. Trust Wallet Connect Function (Monetag Ad)
+// --------------------------------------------------
+async function autoConnectTrustWallet() {
+    showMonetagAd(async () => {
+        if (walletAddress) {
+            showAlert("Wallet already connected: " + walletAddress);
+            return;
+        }
 
-    function collectInjectedWalletProviders() {
-      const found = [];
-      try {
         if (window.ethereum) {
-          if (Array.isArray(window.ethereum.providers)) found.push(...window.ethereum.providers);
-          else found.push(window.ethereum);
-        }
-        if (window.trustwallet) found.push(window.trustwallet);
-        if (window.trustWallet) found.push(window.trustWallet);
-      } catch(e) {}
-
-      const unique = [];
-      found.forEach(p => { if (p && !unique.includes(p)) unique.push(p); });
-      discoveredWalletProviders = unique;
-      return unique;
-    }
-
-    function getPreferredWalletProvider() {
-      const providers = collectInjectedWalletProviders();
-      if (!providers.length) return null;
-
-      // Prefer Trust Wallet when it identifies itself.
-      const trust = providers.find(p => p.isTrust || p.isTrustWallet || p.providerInfo?.rdns === 'com.trustwallet.app');
-      if (trust) return trust;
-
-      // Otherwise use the injected provider.
-      return providers[0];
-    }
-
-    // EIP-6963 wallet discovery (works with modern wallet/browser injections).
-    try {
-      window.addEventListener('eip6963:announceProvider', (event) => {
-        const detail = event.detail || {};
-        if (detail.provider && !discoveredWalletProviders.includes(detail.provider)) {
-          discoveredWalletProviders.push(detail.provider);
-        }
-      });
-      window.dispatchEvent(new Event('eip6963:requestProvider'));
-    } catch(e) {}
-
-    async function connectWeb3Wallet() {
-      const btn = document.getElementById('web3ConnectBtn');
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...'; }
-      try {
-        let injected = getPreferredWalletProvider();
-        if (!injected) {
-          try { window.dispatchEvent(new Event('eip6963:requestProvider')); } catch(e) {}
-          await new Promise(r => setTimeout(r, 900));
-          injected = getPreferredWalletProvider();
-        }
-        if (!injected) {
-          const target = encodeURIComponent(window.location.href);
-          const trustUrl = 'https://link.trustwallet.com/open_url?url=' + target;
-          showAlert('Trust Wallet was not detected. Opening Trust Wallet...');
-          setTimeout(() => { window.location.href = trustUrl; }, 350);
-          return;
-        }
-        selectedWalletProvider = injected;
-        const provider = new ethers.providers.Web3Provider(injected, 'any');
-        await provider.send('eth_requestAccounts', []);
-        // Switch to BNB Smart Chain (BSC Mainnet).
-        try {
-          await injected.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
-        } catch (switchErr) {
-          if (switchErr && (switchErr.code === 4902 || switchErr.code === -32603)) {
             try {
-              await injected.request({ method: 'wallet_addEthereumChain', params: [{
-                chainId: '0x38', chainName: 'BNB Smart Chain', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                rpcUrls: ['https://bsc-dataseed.binance.org/'], blockExplorerUrls: ['https://bscscan.com/']
-              }] });
-            } catch(addErr) { console.warn('Could not add BSC network', addErr); }
-          }
-        }
-        const signer = provider.getSigner();
-        const address = await signer.getAddress();
-        if (!address || !ethers.utils.isAddress(address)) throw new Error('Invalid wallet address returned by provider');
-        walletAddress = address;
-        const connWallet = document.getElementById('connectedWalletAddr');
-        if (connWallet) { connWallet.textContent = address; connWallet.classList.add('wallet-connected-state'); }
-        const cur = document.getElementById('currentWalletDisplay');
-        const txt = document.getElementById('modalWalletAddressText');
-        if (cur) cur.style.display = 'block';
-        if (txt) txt.textContent = address;
-        try {
-          injected.on?.('accountsChanged', accounts => {
-            walletAddress = accounts && accounts.length ? accounts[0] : '';
-            updateUI();
-          });
-          injected.on?.('chainChanged', () => updateUI());
-        } catch(e) {}
-        showAlert('Wallet connected successfully. Address: ' + address.substring(0,6) + '...' + address.slice(-4), 'Wallet Connected');
-        updateUI();
-      } catch(e) {
-        console.error('Wallet connection error:', e);
-        const msg = e && e.code === 4001 ? 'Wallet connection was cancelled.' : 'Wallet connection failed. Please unlock Trust Wallet and try again.';
-        showAlert(msg);
-      } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-link"></i> Connect Wallet'; }
-      }
-    }
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                const signer = provider.getSigner();
+                const address = await signer.getAddress();
+                walletAddress = address;
 
-    function autoConnectTrustWallet(){ connectWeb3Wallet(); }
+                database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
+                    showAlert("Trust Wallet connected: " + address);
+                    updateUI();
+                });
+            } catch (error) {
+                showAlert("Wallet Connection Cancelled or Failed!");
+            }
+        } else {
+            const currentUrl = encodeURIComponent(window.location.href);
+            const trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=60&url=' + currentUrl;
+
+            if (tg && tg.openLink) {
+                tg.openLink(trustDeepLink);
+            } else {
+                window.location.href = trustDeepLink;
+            }
+        }
+    });
+}
 
     // EXCHANGE MODAL SYSTEM
     function openExchangeModal() {
