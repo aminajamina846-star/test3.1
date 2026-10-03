@@ -15,8 +15,11 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- Web3 Modal & Ethers.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+  <!-- Ethers.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<!-- WalletConnect v2 Ethereum Provider -->
+<script src="https://unpkg.com/@walletconnect/ethereum-provider@2.10.1/dist/index.umd.min.js"></script>
+
 
   <!-- Google Fonts & Font Awesome Icons -->
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -2658,124 +2661,188 @@
       if(modal) modal.style.display='none';
     }
   
-// --------------------------------------------------
-// 8. Trust Wallet Connect Function (Monetag Ad Safe + BSC + Full UI Auto Update)
-// --------------------------------------------------
+// ================================================================
+// ADI$ WALLET CONNECTION — TELEGRAM MINI APP + TRUST WALLET (WC v2)
+// ================================================================
+
+const WALLETCONNECT_PROJECT_ID = '59a5e728ce74c2a6acd9946d349fd0f4';
+const ADI_WALLET_CHAIN_ID = 56; // BNB Smart Chain (BSC)
+const ADI_WALLET_CHAIN_HEX = '0x38';
+const ADI_BSC_RPC = 'https://bsc-dataseed.binance.org/';
+
+let walletConnectProvider = null;
+let selectedWalletProvider = null;
+
+function walletConnectConfigured() {
+    return !!WALLETCONNECT_PROJECT_ID && WALLETCONNECT_PROJECT_ID !== 'YOUR_WALLETCONNECT_PROJECT_ID';
+}
+
+function walletProviderClass() {
+    return window['@walletconnect/ethereum-provider']?.EthereumProvider || window.EthereumProvider || null;
+}
+
+// ১. WalletConnect V2 ইনিশিয়ালাইজেশন
+async function initWalletConnectV2() {
+    if (!walletConnectConfigured()) {
+        throw new Error('WalletConnect Project ID is not configured.');
+    }
+
+    if (walletConnectProvider) return walletConnectProvider;
+
+    const EthereumProvider = walletProviderClass();
+
+    if (!EthereumProvider || typeof EthereumProvider.init !== 'function') {
+        throw new Error('WalletConnect v2 library build missing in HTML.');
+    }
+
+    walletConnectProvider = await EthereumProvider.init({
+        projectId: WALLETCONNECT_PROJECT_ID,
+        chains: [ADI_WALLET_CHAIN_ID],
+        optionalChains: [1],
+        rpcMap: {
+            56: ADI_BSC_RPC,
+            1: 'https://cloudflare-eth.com'
+        },
+        showQrModal: false, // টেলিগ্রাম মিনি অ্যাপে সরাসরি ট্রাস্ট ওয়ালেটে পাঠাবে
+        metadata: {
+            name: 'ADI$ Airdrop & Mining App',
+            description: 'ADI$ Telegram Mini App wallet connection',
+            url: window.location.origin,
+            icons: []
+        }
+    });
+
+    return walletConnectProvider;
+}
+
+// ২. ট্রাস্ট ওয়ালেট ডিপলিংক ওপেন করা (টেলিগ্রাম সেফ)
+async function openTrustWalletWalletConnectURI(uri) {
+    if (!uri) throw new Error('WalletConnect URI missing.');
+
+    const trustWC = 'https://link.trustwallet.com/wc?uri=' + encodeURIComponent(uri);
+
+    // Telegram WebApp SDK সাপোর্ট
+    const tgApp = window.Telegram?.WebApp || window.tg;
+    if (tgApp && typeof tgApp.openLink === 'function') {
+        tgApp.openLink(trustWC, { try_instant_view: false });
+        return;
+    }
+
+    try {
+        window.open(trustWC, '_blank', 'noopener,noreferrer');
+    } catch (_) {
+        window.location.href = trustWC;
+    }
+}
+
+// ৩. WalletConnect V2 দিয়ে ট্রাস্ট ওয়ালেট কানেক্ট
+async function connectWalletViaWalletConnectV2() {
+    const provider = await initWalletConnectV2();
+
+    provider.once?.('display_uri', (uri) => {
+        openTrustWalletWalletConnectURI(uri).catch(console.warn);
+    });
+
+    await provider.connect();
+
+    const accounts = await provider.request({ method: 'eth_accounts' });
+    const address = accounts && accounts[0];
+
+    if (!address || (typeof ethers !== 'undefined' && !ethers.utils.isAddress(address))) {
+        throw new Error('Trust Wallet did not return a valid account.');
+    }
+
+    return { address, provider };
+}
+
+// ৪. মূল কানেক্ট বাটন ফাংশন (Ad + Injected + WalletConnect Hybrid)
 async function autoConnectTrustWallet() {
-    var runConnect = async function() {
+    const executeConnect = async () => {
         try {
-            // ১. ওয়ালেট আগে থেকে কানেক্ট করা আছে কি না চেক
-            var currentAddr = (typeof walletAddress !== 'undefined' && walletAddress) ? walletAddress : (window.walletAddress || null);
+            const currentAddr = (typeof walletAddress !== 'undefined' && walletAddress) ? walletAddress : window.walletAddress;
             if (currentAddr) {
                 if (typeof showAlert === 'function') showAlert("Wallet already connected: " + currentAddr);
                 return;
             }
 
-            var ethProvider = window.ethereum || window.trustwallet;
+            let address = null;
+            let providerInstance = null;
 
+            // ক) ওয়ালেট ব্রাউজারের ভেতরে থাকলে (Direct Injected connection)
+            const ethProvider = window.ethereum || window.trustwallet;
             if (ethProvider) {
-                var provider = new ethers.providers.Web3Provider(ethProvider);
+                const provider = new ethers.providers.Web3Provider(ethProvider);
                 await provider.send("eth_requestAccounts", []);
-
-                // ২. BSC (BNB Smart Chain) নেটওয়ার্কে সুইচ করার লজিক
+                
                 try {
-                    await ethProvider.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x38' }] // 0x38 = BSC Mainnet (56)
-                    });
-                } catch (switchError) {
-                    if (switchError && (switchError.code === 4902 || switchError.code === -32603)) {
-                        try {
-                            await ethProvider.request({
-                                method: 'wallet_addEthereumChain',
-                                params: [{
-                                    chainId: '0x38',
-                                    chainName: 'BNB Smart Chain',
-                                    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                                    rpcUrls: ['https://bsc-dataseed.binance.org/'],
-                                    blockExplorerUrls: ['https://bscscan.com/']
-                                }]
-                            });
-                        } catch (addError) {
-                            console.error("BSC Network Add Error:", addError);
-                        }
-                    }
-                }
+                    await ethProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: ADI_WALLET_CHAIN_HEX }] });
+                } catch (_) {}
 
-                var signer = provider.getSigner();
-                var address = await signer.getAddress();
+                const signer = provider.getSigner();
+                address = await signer.getAddress();
+                providerInstance = ethProvider;
+            } 
+            // খ) টেলিগ্রাম মিনি অ্যাপে থাকলে (WalletConnect v2 Connection)
+            else {
+                const res = await connectWalletViaWalletConnectV2();
+                address = res.address;
+                providerInstance = res.provider;
+            }
 
-                if (typeof walletAddress !== 'undefined') {
-                    walletAddress = address;
-                }
-                window.walletAddress = address;
+            if (!address) return;
 
-                // ওয়ালেট এড্রেসটি সংক্ষিপ্ত করা (যেমন: 0x1234...abcd)
-                var shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
+            // গ) ডাটা সেভ ও UI আপডেট
+            if (typeof walletAddress !== 'undefined') walletAddress = address;
+            window.walletAddress = address;
+            selectedWalletProvider = providerInstance;
 
-                // ৩. স্ক্রিনের UI উপাদানগুলো আপডেট করা
-                var connAddrEl = document.getElementById('connectedWalletAddr');
-                if (connAddrEl) connAddrEl.textContent = shortAddress;
+            const shortAddress = address.substring(0, 6) + '...' + address.slice(-4);
 
-                var curDisplay = document.getElementById('currentWalletDisplay');
-                var modalTxt = document.getElementById('modalWalletAddressText');
-                if (curDisplay) curDisplay.style.display = 'block';
-                if (modalTxt) modalTxt.textContent = shortAddress;
+            const connAddrEl = document.getElementById('connectedWalletAddr');
+            if (connAddrEl) connAddrEl.textContent = shortAddress;
 
-                // ৪. ফায়ারবেস ডেটাবেজে সেভ করা
-                var activeUserId = (typeof userId !== 'undefined' && userId) ? userId : null;
+            const curDisplay = document.getElementById('currentWalletDisplay');
+            const modalTxt = document.getElementById('modalWalletAddressText');
+            if (curDisplay) curDisplay.style.display = 'block';
+            if (modalTxt) modalTxt.textContent = shortAddress;
 
-                if (typeof database !== 'undefined' && activeUserId) {
-                    database.ref('users/' + activeUserId + '/walletAddress').set(address).then(function() {
-                        if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
-                        if (typeof closeWalletModal === 'function') closeWalletModal();
-                        if (typeof updateUI === 'function') updateUI();
-                    }).catch(function(err) {
-                        if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
-                        if (typeof closeWalletModal === 'function') closeWalletModal();
-                        if (typeof updateUI === 'function') updateUI();
-                    });
-                } else {
+            const activeUserId = (typeof userId !== 'undefined' && userId) ? userId : localStorage.getItem('adi_user_id');
+
+            if (typeof database !== 'undefined' && activeUserId) {
+                database.ref('users/' + activeUserId + '/walletAddress').set(address).then(() => {
                     if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
                     if (typeof closeWalletModal === 'function') closeWalletModal();
                     if (typeof updateUI === 'function') updateUI();
-                }
-
+                });
             } else {
-                // ব্রাউজারে ethereum না থাকলে ডিপলিংক
-                var currentUrl = encodeURIComponent(window.location.href);
-                var trustDeepLink = 'https://link.trustwallet.com/open_url?coin_id=714&url=' + currentUrl;
-
-                if (typeof tg !== 'undefined' && tg && typeof tg.openLink === 'function') {
-                    tg.openLink(trustDeepLink);
-                } else if (typeof Telegram !== 'undefined' && Telegram.WebApp && typeof Telegram.WebApp.openLink === 'function') {
-                    Telegram.WebApp.openLink(trustDeepLink);
-                } else {
-                    window.location.href = trustDeepLink;
-                }
+                if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + shortAddress);
+                if (typeof closeWalletModal === 'function') closeWalletModal();
+                if (typeof updateUI === 'function') updateUI();
             }
-        } catch (error) {
-            console.error("Wallet Connection Error:", error);
-            if (typeof showAlert === 'function') showAlert("Wallet Connection Cancelled or Failed!");
+
+        } catch (err) {
+            console.error("Wallet Connection Error:", err);
+            if (typeof showAlert === 'function') showAlert("Wallet Connection Failed or Cancelled!");
         }
     };
 
-    // Monetag Ad চেক ও সেফ এক্সিকিউশন
+    // Monetag Ad চেক
     try {
         if (typeof showMonetagAd === 'function') {
-            showMonetagAd(runConnect);
+            showMonetagAd(executeConnect);
         } else {
-            runConnect();
+            await executeConnect();
         }
     } catch (e) {
-        runConnect();
+        await executeConnect();
     }
 }
 
-// পুরোনো বাটন ক্লিকের জন্য ব্যাকওয়ার্ড সাপোর্ট
+// পুরোনো ফাংশন কলের সাথে ব্যাকওয়ার্ড সাপোর্ট
 function connectWeb3Wallet() {
     autoConnectTrustWallet();
 }
+
 
 
     // EXCHANGE MODAL SYSTEM
