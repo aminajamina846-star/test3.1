@@ -2650,38 +2650,49 @@
 
 
 
-// ৬. Trust Wallet Connect Function (Non-Evm Ad)
-async function autoConnectTrustWallet() {
-  if (walletAddress) {
-    showAlert("Wallet already connected: " + walletAddress);
-    return;
-  }
-  if (window.ethereum) {
-    try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      const signer = provider.getSigner();
-      const address = await signer.getAddress();
-      walletAddress = address;
-      database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
-        showAlert("Trust Wallet connected: " + address);
-        uiNavCell();
-      });
-    } catch (error) {
-      showAlert("Wallet Connection Cancelled or Failed!");
+// ৬. Trust Wallet Connect Function (Fixed)
+window.autoConnectTrustWallet = async function() {
+  try {
+    if (typeof window.ethereum === 'undefined') {
+      const currentUrl = encodeURIComponent(window.location.href);
+      const trustDeepLink = `https://link.trustwallet.com/open_url?coin_id=60&url=${currentUrl}`;
+      if (window.tg && window.tg.openLink) {
+        window.tg.openLink(trustDeepLink);
+      } else {
+        window.location.href = trustDeepLink;
+      }
+      return;
     }
-  } else {
-    const currentUrl = encodeURIComponent(window.location.href);
-    const trustDeepLink = `https://link.trustwallet.com/open_url?coin_id=60&url=${currentUrl}`;
-    if (tg && tg.openLink) {
-      tg.openLink(trustDeepLink);
-    } else {
-      window.location.href = trustDeepLink;
-    }
-  }
-}
 
-window.autoConnectTrustWallet = autoConnectTrustWallet;
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    const signer = provider.getSigner();
+    const address = await signer.getAddress();
+    
+    // লোকাল বা গ্লোবাল ভেরিয়েবলে অ্যাড্রেস সেভ করা
+    if (typeof walletAddress !== 'undefined') {
+      walletAddress = address;
+    }
+
+    // ফায়ারবেসে সেভ করার অংশ (যদি database ও userId থাকে)
+    if (typeof database !== 'undefined' && typeof userId !== 'undefined') {
+      database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
+        if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + address);
+        if (typeof uiNavCell === 'function') uiNavCell();
+      });
+    } else {
+      alert("Trust Wallet connected successfully: " + address);
+    }
+  } catch (error) {
+    console.error(error);
+    if (typeof showAlert === 'function') {
+      showAlert("Wallet Connection Cancelled or Failed!");
+    } else {
+      alert("Wallet Connection Cancelled or Failed!");
+    }
+  }
+};
+
   
       
     // EXCHANGE MODAL SYSTEM
