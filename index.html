@@ -4221,26 +4221,56 @@
       setInterval(heartbeatAntiBot, 20000);
       setInterval(loadMarketPrices, 30000);
     });
-  
-  const setupAdTrigger = (id, adType = 'pop') => {
+  const setupAdTrigger = (id) => {
   const btn = document.getElementById(id);
   if (!btn) return;
-  btn.addEventListener('click', () => {
-    if (typeof show_11848612 !== 'function') return;
-    const p = adType ? show_11848612(adType) : show_11848612();
-    Promise.resolve(p)
-      .then(() => console.log(`Ad finished: ${id}`))
-      .catch(err => console.warn(`Ad failed: ${id}`, err));
+
+  // আগের কোনো ঝামেলা এড়াতে বাটন ক্লোন করে নেওয়া
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+
+  newBtn.addEventListener('click', (e) => {
+    // যদি অ্যাড ফাংশন না থাকে, তাহলে সরাসরি বাটনের নরমাল কাজ হবে
+    if (typeof show_11848612 !== 'function') {
+      return;
+    }
+
+    // পপ-আপ বা টাইমারযুক্ত অ্যাড কল করা
+    const adCall = show_11848612();
+
+    // অ্যাড শেষ হয়ে ইউজার অ্যাপে ফিরে আসার পর যা হবে
+    const onAdFinished = () => {
+      console.log(`Ad finished & user returned for: ${id}`);
+      
+      // এখানে সরাসরি বাটনের আসল কাজটি আবার ট্রিগার করা হচ্ছে বা ক্লিক করা হচ্ছে
+      // আপনি চাইলে এখানে আপনার মূল কাজটা বসাতে পারেন
+    };
+
+    if (adCall && typeof adCall.then === 'function') {
+      adCall.then(() => {
+        // ইউজার অ্যাড দেখে ব্যাক করার পর এখানে আসবে
+        onAdFinished();
+      }).catch(err => {
+        console.warn(`Ad skipped or failed for ${id}:`, err);
+        // অ্যাড ফেইল বা স্কিপ করলেও যাতে ইউজারের কাজ আটকে না যায়
+        onAdFinished();
+      });
+    } else {
+      // যদি প্রমিস না থাকে, তবুও যেন ফ্লো ঠিক থাকে
+      setTimeout(onAdFinished, 1000);
+    }
   });
 };
 
-setupAdTrigger('spinBtn', 'pop');
-setupAdTrigger('startTapperBtn', 'pop');   // challenge
-setupAdTrigger('mineBtn', 'pop');
-setupAdTrigger('dailyClaimBtn', 'pop');    // claim
-setupAdTrigger('taskDailyClaimBtn', 'pop');// claim (task tab)
-setupAdTrigger('walletConnBtn', null);     // wallet
-setupAdTrigger('web3ConnectBtn', null);    // wallet modal
+// শুধু এই আইডিগুলোতে বসিয়ে দিন, আর কোনো অতিরিক্ত লজিক লাগবে না!
+setupAdTrigger('spinBtn');
+setupAdTrigger('startTapperBtn');
+setupAdTrigger('mineBtn');
+setupAdTrigger('dailyClaimBtn');
+setupAdTrigger('taskDailyClaimBtn');
+setupAdTrigger('walletConnBtn');
+setupAdTrigger('web3ConnectBtn');
+
   </script>
 </body>
 </html> 
