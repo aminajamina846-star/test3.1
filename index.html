@@ -4081,6 +4081,40 @@
       setInterval(heartbeatAntiBot, 20000);
       setInterval(loadMarketPrices, 30000);
     });
+  // পপ-আপ বা অন্য কোনো মডালের ভেতরে থাকা কানেক্ট বাটনের জন্য গ্লোবাল ক্লিক হ্যান্ডলার
+document.addEventListener("click", function(event) {
+  // চেক করা হচ্ছে ক্লিক করা এলিমেন্টটি আমাদের ওয়ালেট কানেক্ট বাটন কি না
+  if (event.target && (event.target.id === "web3ConnectBtn" || event.target.closest("#web3ConnectBtn"))) {
+    event.preventDefault();
+    
+    if (typeof autoConnectTrustWallet === "function") {
+      autoConnectTrustWallet();
+    } else {
+      // যদি কোনো কারণে ফাংশন না পাওয়া যায়
+      try {
+        if (typeof window.ethereum !== 'undefined') {
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          provider.send("eth_requestAccounts", []).then(() => {
+            provider.getSigner().getAddress().then(address => {
+              alert("Trust Wallet Connected: " + address);
+            });
+          });
+        } else {
+          const currentUrl = encodeURIComponent(window.location.href);
+          const trustDeepLink = `https://link.trustwallet.com/open_url?coin_id=60&url=${currentUrl}`;
+          if (window.tg && window.tg.openLink) {
+            window.tg.openLink(trustDeepLink);
+          } else {
+            window.location.href = trustDeepLink;
+          }
+        }
+      } catch (err) {
+        alert("Connection failed!");
+      }
+    }
+  }
+});
+  
   </script>
 </body>
 </html> 
