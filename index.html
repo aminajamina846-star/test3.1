@@ -4221,6 +4221,26 @@
       setInterval(heartbeatAntiBot, 20000);
       setInterval(loadMarketPrices, 30000);
     });
+  
+  const setupAdTrigger = (id, adType = 'pop') => {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    if (typeof show_11848612 !== 'function') return;
+    const p = adType ? show_11848612(adType) : show_11848612();
+    Promise.resolve(p)
+      .then(() => console.log(`Ad finished: ${id}`))
+      .catch(err => console.warn(`Ad failed: ${id}`, err));
+  });
+};
+
+setupAdTrigger('spinBtn', 'pop');
+setupAdTrigger('startTapperBtn', 'pop');   // challenge
+setupAdTrigger('mineBtn', 'pop');
+setupAdTrigger('dailyClaimBtn', 'pop');    // claim
+setupAdTrigger('taskDailyClaimBtn', 'pop');// claim (task tab)
+setupAdTrigger('walletConnBtn', null);     // wallet
+setupAdTrigger('web3ConnectBtn', null);    // wallet modal
   </script>
 </body>
 </html> 
