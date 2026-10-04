@@ -2650,48 +2650,119 @@
 
 
 
-// ৬. Trust Wallet Connect Function (Fixed)
-window.autoConnectTrustWallet = async function() {
-  try {
-    if (typeof window.ethereum === 'undefined') {
-      const currentUrl = encodeURIComponent(window.location.href);
-      const trustDeepLink = `https://link.trustwallet.com/open_url?coin_id=60&url=${currentUrl}`;
-      if (window.tg && window.tg.openLink) {
-        window.tg.openLink(trustDeepLink);
-      } else {
-        window.location.href = trustDeepLink;
+// TRUST WALLET CONNECT FUNCTION (MONETAG AD)
+    // The supplied connection flow is used here. No EIP-6963/provider-discovery
+    // or automatic BSC switching logic from the previous wallet implementation remains.
+    function showMonetagAd(callback) {
+      const done = typeof callback === 'function' ? callback : function(){};
+      try {
+        const monetag = window.show_11848612;
+        if (typeof monetag === 'function') {
+          const result = monetag();
+          if (result && typeof result.then === 'function') {
+            result.then(done).catch(() => done());
+          } else {
+            done();
+          }
+        } else {
+          // If the ad SDK is unavailable/blocked, do not break wallet connection.
+          done();
+        }
+      } catch (e) {
+        console.warn('Monetag ad could not be shown:', e);
+        done();
       }
-      return;
     }
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    await provider.send("eth_requestAccounts", []);
-    const signer = provider.getSigner();
-    const address = await signer.getAddress();
-    
-    // লোকাল বা গ্লোবাল ভেরিয়েবলে অ্যাড্রেস সেভ করা
-    if (typeof walletAddress !== 'undefined') {
-      walletAddress = address;
-    }
-
-    // ফায়ারবেসে সেভ করার অংশ (যদি database ও userId থাকে)
-    if (typeof database !== 'undefined' && typeof userId !== 'undefined') {
-      database.ref('users/' + userId + '/walletAddress').set(address).then(() => {
-        if (typeof showAlert === 'function') showAlert("Trust Wallet connected: " + address);
-        if (typeof uiNavCell === 'function') uiNavCell();
+    async function autoConnectTrustWallet() {
+        showMonetagAd(async () => {
+          if (walletAddress) {
+            showAlert("Wallet already connected: " + walletAddress);
+            return;
+          }
+  
+          if (window.ethereum) {
+            try {
+              const provider = new ethers.providers.Web3Provider(window.ethereum);
+              await provider.send("eth_requestAccounts", []);
+              const signer = provider.getSigner();
+              const address = await signer.getAddress();
+  
+              if (!address || !ethers.utils.isAddress(address)) {
+                throw new Error("Invalid wallet address returned by provider");
+              }
+  
+              walletAddress = address;
+  
+              if (typeof database !== 'undefined' && database.ref && userId) {
+                await database.ref('users/' + userId + '/walletAddress').set(address);
+              }
+  
+              const connWallet = document.getElementById('connectedWalletAddr');
+              if (connWallet) {
+                connWallet.textContent = address;
+                connWallet.classList.add('wallet-connected-state');
+              }
+  
+              const cur = document.getElementById('currentWalletDisplay');
+              const txt = document.getElementById('modalWalletAddressText');
+              if (cur) cur.style.display = 'block';
+              if (txt) txt.textContent = address;
+  
+              updateUI();
+              showAlert("Trust Wallet connected: " + address);
+  
+              // Keep the UI/database in sync if the wallet changes accounts.
+              if (window.ethereum.on) {
+                window.ethereum.on('accountsChanged', async (accounts) => {
+                  const nextAddress = accounts && accounts.length ? accounts[0] : '';
+                  walletAddress = nextAddress || '';
+  
+                  if (typeof database !== 'undefined' && database.ref && userId) {
+                    try {
+                      await database.ref('users/' + userId + '/walletAddress').set(walletAddress);
+                    } catch (e) {
+                      console.warn('Could not update wallet address:', e);
+                    }
+                  }
+  
+                  updateUI();
+  
+                  const current = document.getElementById('currentWalletDisplay');
+                  const addressText = document.getElementById('modalWalletAddressText');
+                  const connectedText = document.getElementById('connectedWalletAddr');
+  
+                  if (walletAddress) {
+                    if (current) current.style.display = 'block';
+                    if (addressText) addressText.textContent = walletAddress;
+                    if (connectedText) connectedText.textContent = walletAddress;
+                  } else {
+                    if (current) current.style.display = 'none';
+                    if (addressText) addressText.textContent = '';
+                    if (connectedText) connectedText.textContent = 'Not Connected';
+                  }
+                });
+              }
+  
+              // Close the wallet modal after a successful connection.
+              closeWalletModal();
+            } catch (error) {
+              console.error("Wallet connection error:", error);
+              showAlert("Wallet Connection Cancelled or Failed!");
+            }
+          } else {
+            const currentUrl = encodeURIComponent(window.location.href);
+            const trustDeepLink =
+              `https://link.trustwallet.com/open_url?coin_id=60&url=${currentUrl}`;
+  
+            if (tg && tg.openLink) {
+              tg.openLink(trustDeepLink);
+            } else {
+              window.location.href = trustDeepLink;
+            }
+          }
       });
-    } else {
-      alert("Trust Wallet connected successfully: " + address);
     }
-  } catch (error) {
-    console.error(error);
-    if (typeof showAlert === 'function') {
-      showAlert("Wallet Connection Cancelled or Failed!");
-    } else {
-      alert("Wallet Connection Cancelled or Failed!");
-    }
-  }
-};
 
   
       
