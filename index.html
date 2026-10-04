@@ -1917,7 +1917,69 @@
         if (minersEl) minersEl.innerText = activeMiners.toLocaleString();
       });
     }
+// ১. স্পিন বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('spinBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612('pop').then(() => {
+            console.log('Ad finished! Spin action.');
+        });
+    }
+});
 
+// ২. চ্যালেঞ্জ বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('challengeBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612('pop').then(() => {
+            console.log('Ad finished! Challenge action.');
+        });
+    }
+});
+
+// ৩. মাইনিং বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('mineBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612('pop').then(() => {
+            console.log('Ad finished! Mining action.');
+        });
+    }
+});
+
+// ৪. ক্লেইম বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('claimBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612('pop').then(() => {
+            console.log('Ad finished! Claim action.');
+        });
+    }
+});
+
+// ৫. ইনভাইট বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('inviteBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612('pop').then(() => {
+            console.log('Ad finished! Invite action.');
+        });
+    }
+});
+
+// ৬. ওয়ালেট বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('walletBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612().then(() => {
+            console.log('Ad finished! Wallet action.');
+        });
+    }
+});
+
+// ৭. বুস্ট বাটন ক্লিক করলে অ্যাড আসবে
+document.getElementById('boostBtn').addEventListener('click', function() {
+    if (typeof show_11848612 === 'function') {
+        show_11848612('pop').then(() => {
+            console.log('Ad finished! Boost action.');
+        });
+    }
+});
+          
     // NOTIFICATION SYSTEM — lightweight Firebase reads, max 30 items
     // Global announcements + personal notifications are merged locally.
     // New items show a red badge. Telegram notifications are queued in Firebase
