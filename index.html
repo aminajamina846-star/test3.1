@@ -3879,7 +3879,30 @@
     }).catch(() => {});
 }
 
-
+// পুরানো ইউজারদের ডাটা অটো-ফিক্স করার কোড
+(function fixReferralDataOnce() {
+    if (typeof database === 'undefined' || !database.ref) return;
+    database.ref('users/').once('value', snap => {
+        const users = snap.val() || {};
+        const updates = {};
+        Object.keys(users).forEach(uid => {
+            const u = users[uid] || {};
+            if (u.referrals && typeof u.referrals === 'object') {
+                const count = Object.keys(u.referrals).length;
+                if (count > 0) {
+                    updates[`users/${uid}/referralCount`] = count;
+                    if (!u.firstReferralAt) {
+                        updates[`users/${uid}/firstReferralAt`] = Date.now();
+                    }
+                }
+            }
+        });
+        if (Object.keys(updates).length > 0) {
+            database.ref().update(updates);
+        }
+    });
+})();
+  
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
       const m=document.getElementById('deleteAccountModal'); if(m) m.style.display='flex';
