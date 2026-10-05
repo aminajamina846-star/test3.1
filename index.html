@@ -3763,7 +3763,8 @@
       }).catch(() => {});
     }
 
-    // ONE-TIME REFERRAL REWARD: exactly +50 ADIS for each referred user.
+
+// ONE-TIME REFERRAL REWARD: exactly +50 ADIS for each referred user.
 // The referral record is written inside a Firebase transaction so repeated
 // page loads / Telegram retries cannot award the same referral twice.
 
@@ -3867,8 +3868,9 @@ function processOneTimeReferral() {
                     timestamp: notifyNow
                 }).catch(() => {});
 
-                // Mark current user as processed
+                // Mark current user as processed and sync name in database
                 userRef.update({
+                    userName: displayUserName,
                     referralProcessed: true,
                     referredBy: referrerId,
                     referralRewardedAt: notifyNow
@@ -3894,9 +3896,17 @@ function loadUserReferralLeaderboard() {
                 count = Object.keys(u.referrals).length;
             }
 
+            // Extract display name reliably across different database properties
+            let rawName = u.userName || u.name || u.first_name || u.username;
+            let displayName = "User " + uid;
+
+            if (rawName && rawName !== 'Browser Miner') {
+                displayName = rawName.startsWith('@') ? rawName : (u.username ? "@" + u.username : rawName);
+            }
+
             return {
                 id: uid,
-                name: u.userName || ("User " + uid),
+                name: displayName,
                 count: count,
                 isBanned: isBanned
             };
@@ -3922,8 +3932,8 @@ function loadUserReferralLeaderboard() {
 
         box.innerHTML = html;
     });
-}
-
+  }
+  
 
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
