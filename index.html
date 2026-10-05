@@ -3775,124 +3775,61 @@ if (isTelegramMode() && typeof database !== 'undefined' && database.ref) {
     }
 }
   
-// -------------------------------------------------------------
-// SAFE HELPER FUNCTIONS
-// -------------------------------------------------------------
-function safeIsTelegramMode() {
-    try {
-        if (typeof isTelegramMode === 'function') return isTelegramMode();
-        return !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
-    } catch (e) {
-        return false;
-    }
-}
-
-function safeIsBanned(data) {
-    try {
-        if (typeof isAccountBannedData === 'function') return isAccountBannedData(data);
-        if (!data) return false;
-        const status = String(data.status || '').toLowerCase();
-        return data.banned === true || data.isBanned === true || status === 'banned';
-    } catch (e) {
-        return false;
-    }
-}
-
-function getSafeUserId() {
-    try {
-        if (typeof userId !== 'undefined' && userId) return String(userId);
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
-            return String(window.Telegram.WebApp.initDataUnsafe.user.id);
-        }
-    } catch (e) {}
-    return null;
-}
-
-// -------------------------------------------------------------
-// 1. ONE-TIME REFERRAL REWARD PROCESSOR
-// -------------------------------------------------------------
+// ONE-TIME REFERRAL REWARD: exactly +50 ADI$ for each referred user.
+// The referral record is written inside a firebase transaction so repeated
+// page loads / Telegram retries cannot award the same referral twice.
 function getReferralStartParam() {
+    if (!isTelegramMode()) return '';
     try {
-        const tg = window.Telegram && window.Telegram.WebApp;
-        if (!tg || !tg.initDataUnsafe) return '';
-
-        let param = tg.initDataUnsafe.start_param || '';
-        
-        if (!param) {
-            const urlParams = new URLSearchParams(window.location.search);
-            param = urlParams.get('startapp') || urlParams.get('start') || urlParams.get('tgWebAppStartParam') || '';
-        }
-
-        return String(param).trim();
+        return String((tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '').trim();
     } catch (e) {
         return '';
     }
 }
 
 function processOneTimeReferral() {
-    if (typeof database === 'undefined' || !database || typeof database.ref !== 'function') return;
-
+    if (!isTelegramMode() || typeof database === 'undefined' || !database.ref) return;
     const referrerId = getReferralStartParam();
-    const currentUserId = getSafeUserId();
-
-    if (!referrerId || !currentUserId || referrerId === currentUserId) return;
+    if (!referrerId || !userId || referrerId === String(userId)) return;
+    const referredUid = String(userId);
     if (window._accountBanned) return;
 
-    const tg = window.Telegram && window.Telegram.WebApp;
-    const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
-
-    let displayUserName = "User " + currentUserId;
-    if (tgUser) {
-        if (tgUser.username) {
-            displayUserName = "@" + tgUser.username;
-        } else if (tgUser.first_name) {
-            displayUserName = tgUser.first_name + (tgUser.last_name ? " " + tgUser.last_name : "");
-        }
-    } else if (typeof userName !== 'undefined' && userName && userName !== 'Browser Miner') {
-        displayUserName = userName;
-    }
-
-    const currentAvatar = (typeof userAvatarUrl !== 'undefined' && userAvatarUrl) ? userAvatarUrl : '';
-
-    database.ref('users/' + currentUserId).once('value').then(userSnap => {
+    database.ref('users/' + referredUid).once('value').then(userSnap => {
         const referredData = userSnap.exists() ? userSnap.val() : {};
-
-        if (safeIsBanned(referredData) || referredData.referredBy || referredData.referralProcessed === true || (referredData.antiBot && referredData.antiBot.suspicious === true)) return;
+        // A member can receive the referral relationship/bonus only once.
+        // The first valid referral link used by this account wins; later links do nothing.
+        if (referredData.referredBy || referredData.referralProcessed === true) return;
+        if (isAccountBannedData(referredData) || (referredData.antiBot && referredData.antiBot.suspicious === true)) return;
 
         const referrerPath = database.ref('users/' + referrerId);
-
         return referrerPath.transaction(current => {
             if (!current) return current;
-
-            if (safeIsBanned(current) || (current.antiBot && current.antiBot.suspicious === true)) return current;
-
+            if (isAccountBannedData(current)) return current;
+            if (current.antiBot && current.antiBot.suspicious === true) return current;
             const referrals = (current.referrals && typeof current.referrals === 'object') ? current.referrals : {};
-
-            if (Object.prototype.hasOwnProperty.call(referrals, currentUserId)) return current;
+            if (Object.prototype.hasOwnProperty.call(referrals, referredUid)) return current;
 
             const referralNow = Date.now();
-            
-            referrals[currentUserId] = {
-                name: displayUserName,
-                uid: currentUserId,
-                amount: 50,
-                recordedAt: referralNow,
-                avatar: currentAvatar || (referredData && referredData.avatar) || '',
-                status: safeIsBanned(referredData) ? 'banned' : 'active'
-            };
-
             current.balance = (Number(current.balance) || 0) + 50;
             current.referrals = referrals;
-            current.referralCount = Object.keys(referrals).length;
             if (!current.firstReferralAt) current.firstReferralAt = referralNow;
+            referrals[referredUid] = {
+                name: userName || ('User ' + referredUid),
+                amount: 50,
+                rewardedAt: referralNow,
+                avatar: userAvatarUrl || referredData.avatar || ''
+            };
+
+            // ---- ONLY ADDED REFERRAL COUNT LOGIC HERE ----
+            current.referralCount = Object.keys(referrals).length;
 
             current.history = (current.history && typeof current.history === 'object') ? current.history : {};
-            current.history['ref_' + currentUserId] = {
+            current.history['ref_' + referredUid] = {
                 title: 'Referral Bonus',
-                amount: '+50 ADIS',
+                amount: '+50 ADI$',
                 date: new Date().toLocaleString(),
                 type: 'Referral Reward',
-                referredUser: displayUserName,
+                referredUser: referredUid,
                 timestamp: referralNow
             };
 
@@ -3900,221 +3837,60 @@ function processOneTimeReferral() {
         }).then(result => {
             if (result && result.committed) {
                 const notifyNow = Date.now();
-
-                database.ref('notifications/' + referrerId + '/ref_' + currentUserId).set({
-                    title: 'Referral Reward Received!',
-                    message: `A new member (${displayUserName}) joined through your referral. +50 ADIS has been added to your balance.`,
+                database.ref('notifications/' + referrerId + '/ref_' + referredUid).set({
+                    title: 'Referral Reward Received',
+                    message: 'A new member joined through your referral. +50 ADI$ has been added to your balance.',
                     timestamp: notifyNow
                 }).catch(() => {});
 
-                database.ref('users/' + currentUserId).update({
-                    userName: displayUserName,
+                queueTelegramNotification(referrerId, 'Referral Reward Received', 'A new member joined through your referral. +50 ADI$ has been added to your balance.', 'referral');
+
+                database.ref('users/' + referredUid).update({
                     referralProcessed: true,
                     referredBy: referrerId,
                     referralRewardedAt: notifyNow,
-                    avatar: currentAvatar || (referredData && referredData.avatar) || ''
+                    avatar: userAvatarUrl || referredData.avatar || ''
                 });
             }
         });
-    }).catch(err => console.error("Referral Error:", err));
+    }).catch(() => {});
 }
 
-// -------------------------------------------------------------
-// 2. LIVE REAL-TIME REFERRAL MODAL UI RENDERER
-// -------------------------------------------------------------
-function renderReferralModalUI() {
-    const currentUserId = getSafeUserId();
-    if (typeof database === 'undefined' || !database || typeof database.ref !== 'function' || !currentUserId) return;
-
-    try {
-        database.ref('users/' + currentUserId + '/referrals').on('value', snap => {
-            const referrals = snap.val() || {};
-            const refKeys = Object.keys(referrals);
-
-            if (refKeys.length === 0) {
-                updateReferralUIElements(0, 0, 0, 0, `<div style="text-align:center; color:#64748b; font-size:12px; padding:15px 0;">No referrals yet.</div>`);
-                return;
-            }
-
-            database.ref('users').once('value', usersSnap => {
-                const allUsers = usersSnap.val() || {};
-                
-                let activeCount = 0;
-                let bannedCount = 0;
-                let totalEarned = 0;
-                let listHtml = '';
-
-                refKeys.forEach(refUid => {
-                    const refItem = referrals[refUid] || {};
-                    const mainUserData = allUsers[refUid] || {};
-
-                    const isBanned = safeIsBanned(mainUserData) || safeIsBanned(refItem);
-
-                    let rawName = refItem.name || mainUserData.userName || mainUserData.username || mainUserData.first_name || "";
-                    let displayName = (rawName && rawName !== "User") ? (rawName.startsWith('@') ? rawName : "@" + rawName) : "Member #" + String(refUid).slice(-4);
-
-                    if (isBanned) {
-                        bannedCount++;
-                        listHtml += `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-                            <span style="color:#94a3b8; font-size:13px; font-weight:500;">${displayName}</span>
-                            <span style="color:#ef4444; font-size:12px; font-weight:700;">● Banned</span>
-                        </div>`;
-                    } else {
-                        activeCount++;
-                        totalEarned += (Number(refItem.amount) || 50);
-                        listHtml += `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-                            <span style="color:#f1f5f9; font-size:13px; font-weight:500;">${displayName}</span>
-                            <span style="color:#10b981; font-size:12px; font-weight:700;">● Active <small style="color:#64748b; font-size:10px;">(+50 ADI$)</small></span>
-                        </div>`;
-                    }
-                });
-
-                updateReferralUIElements(refKeys.length, totalEarned, activeCount, bannedCount, listHtml);
-            }).catch(e => console.error("Error syncing user statuses:", e));
-        });
-    } catch (e) {
-        console.error("UI Render Error:", e);
-    }
-}
-
-function updateReferralUIElements(totalRef, totalEarned, activeCount, bannedCount, listHtml) {
-    const totalRefElem = document.getElementById('totalReferredCount');
-    if (totalRefElem) totalRefElem.innerText = totalRef;
-
-    const totalEarnElem = document.getElementById('totalEarnedADIS');
-    if (totalEarnElem) totalEarnElem.innerText = totalEarned + " ADI$";
-
-    const activeCounterElem = document.getElementById('activeRefCount');
-    if (activeCounterElem) activeCounterElem.innerText = activeCount;
-
-    const bannedCounterElem = document.getElementById('bannedRefCount');
-    if (bannedCounterElem) bannedCounterElem.innerText = bannedCount;
-
-    const historyContainer = document.getElementById('referralHistoryList');
-    if (historyContainer) historyContainer.innerHTML = listHtml;
-}
-
-// -------------------------------------------------------------
-// 3. EXACT LEADERBOARD DESIGN RENDERER (AS PER SCREENSHOT)
-// -------------------------------------------------------------
-function loadUserReferralLeaderboard() {
-    const box = document.getElementById('userReferralLeaderboard') || 
-                document.getElementById('referralLeaderboard') || 
-                document.getElementById('leaderboardList');
-
-    if (!box || typeof database === 'undefined' || !database || typeof database.ref !== 'function') return;
-
+function loadOnlineReferralLeaderboard() {
+    const box = document.getElementById('userReferralLeaderboard');
+    if (!box || typeof database === 'undefined' || !database.ref) return;
     database.ref('users/').once('value', snap => {
         const users = snap.val() || {};
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
-            const isBanned = safeIsBanned(u);
-            
+            const isBanned = u.banned === true || u.isBanned === true;
             let count = Number(u.referralCount) || 0;
-            if (!count && u.referrals && typeof u.referrals === 'object' && !Array.isArray(u.referrals)) {
+            if (!count && u.referrals && typeof u.referrals === 'object') {
                 count = Object.keys(u.referrals).length;
             }
-
-            let rawName = u.userName || u.name || u.first_name || u.username;
-            let displayName = "User " + uid;
-
-            if (rawName && rawName !== 'Browser Miner') {
-                displayName = rawName.startsWith('@') ? rawName : (u.username ? "@" + u.username : rawName);
-            }
-
             return {
                 id: uid,
-                name: displayName,
-                count: count,
-                firstReferralAt: u.firstReferralAt || Infinity,
+                name: u.userName || u.name || ('User ' + uid),
+                a: u.firstReferralAt || Infinity,
+                b: count,
                 isBanned: isBanned
             };
         });
 
-        // Filter non-banned users with referrals
-        const activeList = list.filter(u => !u.isBanned && u.count > 0);
-        
-        // Sort by referral count (Descending), then earlier firstReferralAt (Ascending)
-        activeList.sort((a, b) => {
-            if (b.count !== a.count) {
-                return b.count - a.count;
-            }
-            return a.firstReferralAt - b.firstReferralAt;
-        });
+        const activeList = list.filter(u => !u.isBanned && u.b > 0);
+        activeList.sort((a, b) => b.b - a.b || a.a - b.a);
 
         if (activeList.length === 0) {
-            box.innerHTML = `
-                <div style="text-align:center; color:#64748b; font-size:12px; font-weight:500; padding:15px; background:#0b131b; border-radius:14px; border:1px solid rgba(255,255,255,0.06);">
-                    No active referrals found.
-                </div>`;
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:8px;">No referrals yet</div>`;
             return;
         }
 
-        let html = '';
-        activeList.slice(0, 10).forEach((item, index) => {
-            const escName = String(item.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            
-            // Default styling matching the image cards
-            let badgeBg = '#222b35';
-            let badgeColor = '#94a3b8';
-            let borderStyle = 'border: 1px solid rgba(255, 255, 255, 0.05);';
-
-            // Custom Rank Colors based on image
-            if (index === 0) {
-                badgeBg = '#e67e22'; // Rank 1 Orange/Gold
-                badgeColor = '#ffffff';
-                borderStyle = 'border: 1px solid rgba(230, 126, 34, 0.3);';
-            } else if (index === 1) {
-                badgeBg = '#7f8c8d'; // Rank 2 Silver/Grey
-                badgeColor = '#ffffff';
-            } else if (index === 2) {
-                badgeBg = '#d35400'; // Rank 3 Bronze/Brown
-                badgeColor = '#ffffff';
-            } else if (index === 3) {
-                badgeBg = '#2c3e50'; // Rank 4
-                badgeColor = '#95a5a6';
-            } else if (index === 4) {
-                badgeBg = '#212f3d'; // Rank 5
-                badgeColor = '#85929e';
-            }
-
-            html += `
-            <div style="display:flex; align-items:center; justify-content:space-between; background: rgba(18, 26, 36, 0.85); ${borderStyle} border-radius:18px; padding:12px 16px; margin-bottom:10px;">
-                <div style="display:flex; align-items:center; gap:14px;">
-                    <div style="width:36px; height:36px; border-radius:50%; background:${badgeBg}; color:${badgeColor}; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800;">
-                        ${index + 1}
-                    </div>
-                    <span style="font-size:14px; font-weight:600; color:#ffffff;">${escName}</span>
-                </div>
-                <div style="font-size:14px; font-weight:700; color:#10b981;">
-                    ${item.count} Refers
-                </div>
-            </div>`;
-        });
-
-        box.innerHTML = html;
-    }).catch(err => console.error("Leaderboard Error:", err));
+        const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        box.innerHTML = activeList.slice(0, 10).map((item, i) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;background:rgba(255,255,255,0.03);border-radius:8px;"><span style="color:#fff;font-size:13px;">${i + 1}. ${esc(item.name)}</span><span style="color:#10b981;font-size:12px;font-weight:600;">${item.b} Refers</span></div>`).join('');
+    }).catch(() => {});
 }
 
-// -------------------------------------------------------------
-// 4. INITIALIZATION ON LOAD
-// -------------------------------------------------------------
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        try {
-            processOneTimeReferral();
-            loadUserReferralLeaderboard();
-            renderReferralModalUI();
-        } catch (e) {
-            console.error("Initialization Error:", e);
-        }
-    }, 500);
-});
-
-          
-                    
+                   
             
 
     // ==================== USER SELF DELETE ====================
