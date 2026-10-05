@@ -3828,24 +3828,16 @@
 
 
     function loadOnlineReferralLeaderboard() {
-    // ১. আপনার HTML এর সঠিক контейনার বা আইডি
     const box = document.getElementById('userReferralLeaderboard') || 
                 document.getElementById('referralLeaderboard') || 
                 document.getElementById('leaderboardList');
 
-    if (!box) return;
+    if (!box || typeof database === 'undefined' || !database || !database.ref) return;
 
-    // ২. ফায়ারবেস কানেকশন চেক
-    if (typeof database === 'undefined' || !database || !database.ref) {
-        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:8px;">Database not connected</div>`;
-        return;
-    }
-
-    // ৩. ফায়ারবেস থেকে ডাটা রিড
-    database.ref('users/').once('value').then(snap => {
+    database.ref('users/').once('value', snap => {
         const users = snap.val() || {};
         
-        // ডাটা প্রসেস
+        // ১. ডাটা প্রসেসিং
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
             const isBanned = u.banned === true || u.isBanned === true;
@@ -3871,9 +3863,10 @@
             };
         });
 
-        // ফিল্টারিং ও শর্টিং
+        // ২. একটিভ ইউজার ফিল্টার
         const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
 
+        // ৩. শর্টিং: রেফারেল সংখ্যা আগে, সমান হলে ফার্স্ট রেফার টাইম
         activeList.sort((a, b) => {
             if (b.referralCount !== a.referralCount) {
                 return b.referralCount - a.referralCount;
@@ -3881,7 +3874,6 @@
             return a.firstReferralAt - b.firstReferralAt;
         });
 
-        // যদি কোনো রেফার না থাকে
         if (activeList.length === 0) {
             box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No referrals yet</div>`;
             return;
@@ -3889,17 +3881,19 @@
 
         const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         
-        // ৪. UI রেন্ডার (লোডিং সরাবে এবং ডাটা বসাবে)
+        // ৪. একদম পরিষ্কার বোর্ড রেন্ডারিং (কোনো টাইম বা এক্সট্রা টেক্সট ছাড়া)
         box.innerHTML = activeList.slice(0, 10).map((item, i) => 
-            `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,0.03);border-radius:8px;">
-                <span style="color:#fff;font-size:13px;font-weight:500;">${i + 1}. ${esc(item.name)}</span>
-                <span style="color:#10b981;font-size:12px;font-weight:600;">${item.referralCount} referrals</span>
+            `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;margin-bottom:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:10px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="color:#f59e0b;font-size:13px;font-weight:700;min-width:18px;">${i + 1}</span>
+                    <span style="color:#ffffff;font-size:13px;font-weight:600;letter-spacing:0.3px;">${esc(item.name)}</span>
+                </div>
+                <span style="color:#10b981;font-size:12px;font-weight:700;background:rgba(16,185,129,0.1);padding:4px 8px;border-radius:6px;">${item.referralCount} referrals</span>
             </div>`
         ).join('');
 
     }).catch(err => {
         console.error("Leaderboard Error:", err);
-        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:8px;">Failed to load data</div>`;
     });
 }
 
