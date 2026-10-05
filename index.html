@@ -3762,7 +3762,19 @@
         if (Object.keys(removals).length) database.ref().update(removals).catch(() => {});
       }).catch(() => {});
     }
-
+// Sync Telegram User Name to Firebase as soon as Telegram App loads
+if (isTelegramMode() && typeof database !== 'undefined' && database.ref) {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
+    
+    if (tgUser && userId) {
+        const nameToStore = tgUser.username ? ("@" + tgUser.username) : (tgUser.first_name + (tgUser.last_name ? " " + tgUser.last_name : ""));
+        database.ref('users/' + userId).update({
+            userName: nameToStore
+        }).catch(() => {});
+    }
+}
+  
 
 // ONE-TIME REFERRAL REWARD: exactly +50 ADIS for each referred user.
 // The referral record is written inside a Firebase transaction so repeated
