@@ -3803,6 +3803,7 @@
             name: userName || 'User', uid: referredUid, amount: 50, rewardedAt: referralNow,
             avatar: userAvatarUrl || referredData.avatar || ''
           };
+          current.referralCount = Object.keys(referrals).length;
           current.history = current.history && typeof current.history === 'object' ? current.history : {};
           current.history['ref_' + referredUid] = {
             title:'Referral Bonus', amount:'+50 ADI$', date:new Date().toLocaleString(),
