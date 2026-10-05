@@ -3827,75 +3827,22 @@
     }
 
 
-    function loadOnlineReferralLeaderboard() {
-    const box = document.getElementById('userReferralLeaderboard') || 
-                document.getElementById('referralLeaderboard') || 
-                document.getElementById('leaderboardList');
-
-    if (!box || typeof database === 'undefined' || !database || !database.ref) return;
-
-    database.ref('users/').once('value', snap => {
-        const users = snap.val() || {};
-        
-        // ১. ডাটা প্রসেসিং
-        const list = Object.keys(users).map(uid => {
-            const u = users[uid] || {};
-            const isBanned = u.banned === true || u.isBanned === true;
-            
-            let count = 0;
-            if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
-                count = u.referralCount;
-            } else if (u.referrals && typeof u.referrals === 'object') {
-                count = Object.keys(u.referrals).length;
-            }
-
-            let time = Number(u.firstReferralAt);
-            if (isNaN(time) || time < 100000000000) {
-                time = 9999999999999; 
-            }
-
-            return {
-                id: uid,
-                name: u.userName || u.name || ('User ' + uid),
-                firstReferralAt: time,
-                referralCount: Number(count) || 0,
-                isBanned: isBanned
-            };
-        });
-
-        // ২. একটিভ ইউজার ফিল্টার
-        const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
-
-        // ৩. শর্টিং: রেফারেল সংখ্যা আগে, সমান হলে ফার্স্ট রেফার টাইম
-        activeList.sort((a, b) => {
-            if (b.referralCount !== a.referralCount) {
-                return b.referralCount - a.referralCount;
-            }
-            return a.firstReferralAt - b.firstReferralAt;
-        });
-
-        if (activeList.length === 0) {
-            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No referrals yet</div>`;
-            return;
-        }
-
-        const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        
-        // ৪. একদম পরিষ্কার বোর্ড রেন্ডারিং (কোনো টাইম বা এক্সট্রা টেক্সট ছাড়া)
-        box.innerHTML = activeList.slice(0, 10).map((item, i) => 
-            `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;margin-bottom:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:10px;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="color:#f59e0b;font-size:13px;font-weight:700;min-width:18px;">${i + 1}</span>
-                    <span style="color:#ffffff;font-size:13px;font-weight:600;letter-spacing:0.3px;">${esc(item.name)}</span>
-                </div>
-                <span style="color:#10b981;font-size:12px;font-weight:700;background:rgba(16,185,129,0.1);padding:4px 8px;border-radius:6px;">${item.referralCount} referrals</span>
-            </div>`
-        ).join('');
-
-    }).catch(err => {
-        console.error("Leaderboard Error:", err);
-    });
-}
+    // Referral Leaderboard Table
+    function loadReferralLeaderboard(users) {
+      const container = document.getElementById('refLeaderboardTable');
+      if(!container) return;
+      const ids=Object.keys(users||{}).filter(uid=>!adminUserIsBanned(users[uid]));
+      const list=ids.map(uid=>({uid,entries:getReferralEntriesForUid(users,uid)})).filter(x=>x.entries.length>0);
+      list.sort((a,b)=>b.entries.length-a.entries.length);
+      if(!list.length){ container.innerHTML='<div style="padding:16px;color:#64748b">No referral relationships found.</div>'; return; }
+      let html='<table><tr><th>Rank</th><th>Referrer</th><th>Referred Users</th><th>Total Referrals</th><th>Bonus</th></tr>';
+      list.slice(0,50).forEach((item,i)=>{
+        const u=users[item.uid]||{};
+        const names=item.entries.slice(0,5).map(x=>`<span class="leader-user" onclick="openBioModal('${escAdmin(x.rid)}')">${escAdmin(x.user.username||x.user.name||x.rid)}</span>`).join(', ');
+        html+=`<tr><td><b style="color:#fbbf24">#${i+1}</b></td><td><span class="leader-user" onclick="openBioModal('${escAdmin(item.uid)}')"><b>@${escAdmin(u.username||u.name||item.uid)}</b></span><br><small>${escAdmin(item.uid)}</small></td><td>${names}${item.entries.length>5?' …':''}</td><td><b>${item.entries.length}</b></td><td><b style="color:var(--accent-green)">${item.entries.length*50} ADI$</b></td></tr>`;
+      });
+      html+='</table>'; container.innerHTML=html;
+    }
 
   
     // ==================== USER SELF DELETE ====================
