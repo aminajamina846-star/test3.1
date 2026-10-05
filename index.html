@@ -3837,12 +3837,12 @@
     database.ref('users/').once('value', snap => {
         const users = snap.val() || {};
         
-        // ১. ডাটা প্রসেসিং ও নরমালাইজেশন
+        // ১. ডাটা প্রসেসিং
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
             const isBanned = u.banned === true || u.isBanned === true;
             
-            // রেফারেল কাউন্ট নির্ধারণ
+            // রেফারেল সংখ্যা বের করা
             let count = 0;
             if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
                 count = u.referralCount;
@@ -3850,10 +3850,10 @@
                 count = Object.keys(u.referrals).length;
             }
 
-            // টাইমস্ট্যাম্প সেফটি ফিক্স
+            // ব্যাকএন্ড শর্টিংয়ের জন্য টাইম ট্র্যাকিং (যা UI-তে দেখাবে না)
             let time = Number(u.firstReferralAt);
             if (isNaN(time) || time < 100000000000) {
-                time = 9999999999999; // অকার্যকর টাইমের ক্ষেত্রে শেষে র‍্যাংক করানোর জন্য
+                time = 9999999999999; 
             }
 
             return {
@@ -3865,12 +3865,10 @@
             };
         });
 
-        // ২. ফিল্টারিং: শুধুমাত্র একটিভ এবং অন্তত ১টি রেফারেল থাকা ইউজার
+        // ২. একটিভ ইউজার ফিল্টার
         const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
 
-        // ৩. পারফেক্ট শর্টিং লজিক
-        // প্রাইমারি: যার রেফারেল বেশি সে উপরে থাকবে
-        // সেকেন্ডারি: রেফারেল সমান হলে যে আগে ১ম রেফারেল করেছিল সে উপরে থাকবে
+        // ৩. শর্টিং: রেফারেল সংখ্যা বেশি হলে উপরে, সমান হলে ব্যাকএন্ডে টাইমের হিসাব
         activeList.sort((a, b) => {
             if (b.referralCount !== a.referralCount) {
                 return b.referralCount - a.referralCount;
@@ -3878,19 +3876,17 @@
             return a.firstReferralAt - b.firstReferralAt;
         });
 
-        // ৪. খালি থাকলে বার্তা দেখানো
         if (activeList.length === 0) {
             box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:8px;">No referrals yet</div>`;
             return;
         }
 
-        // XSS প্রতিরোধ সংকেত
         const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         
-        // ৫. UI রেন্ডারিং (টাইমস্ট্যাম্প ছাড়াই সোজা ডিজাইন)
+        // ৪. ক্লিন UI (কোনো তারিখ বা সময় নেই, শুধু সিরিয়াল, নাম ও রেফার সংখ্যা)
         box.innerHTML = activeList.slice(0, 10).map((item, i) => 
-            `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;background:rgba(255,255,255,0.03);border-radius:8px;">
-                <span style="color:#fff;font-size:13px;">${i + 1}. ${esc(item.name)}</span>
+            `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                <span style="color:#fff;font-size:13px;font-weight:500;">${i + 1}. ${esc(item.name)}</span>
                 <span style="color:#10b981;font-size:12px;font-weight:600;">${item.referralCount} referrals</span>
             </div>`
         ).join('');
@@ -3900,29 +3896,6 @@
     });
 }
 
-// পুরানো ইউজারদের ডাটা অটো-ফিক্স করার কোড
-(function fixReferralDataOnce() {
-    if (typeof database === 'undefined' || !database.ref) return;
-    database.ref('users/').once('value', snap => {
-        const users = snap.val() || {};
-        const updates = {};
-        Object.keys(users).forEach(uid => {
-            const u = users[uid] || {};
-            if (u.referrals && typeof u.referrals === 'object') {
-                const count = Object.keys(u.referrals).length;
-                if (count > 0) {
-                    updates[`users/${uid}/referralCount`] = count;
-                    if (!u.firstReferralAt) {
-                        updates[`users/${uid}/firstReferralAt`] = Date.now();
-                    }
-                }
-            }
-        });
-        if (Object.keys(updates).length > 0) {
-            database.ref().update(updates);
-        }
-    });
-})();
   
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
