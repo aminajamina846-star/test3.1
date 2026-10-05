@@ -3798,7 +3798,6 @@
           const referralNow = Date.now();
           current.balance = (Number(current.balance) || 0) + 50;
           current.referrals = referrals;
-          current.referralCount = Object.keys(referrals).length;
           if (!current.firstReferralAt) current.firstReferralAt = referralNow;
           current.referrals[referredUid] = {
             name: userName || 'User', uid: referredUid, amount: 50, rewardedAt: referralNow,
