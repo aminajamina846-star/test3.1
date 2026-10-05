@@ -3828,18 +3828,12 @@
 
 
     function loadOnlineReferralLeaderboard() {
-    // ১. আপনার HTML এর সঠিক আইডি চেক করা
     const box = document.getElementById('userReferralLeaderboard') || 
                 document.getElementById('referralLeaderboard') || 
                 document.getElementById('leaderboardList');
 
-    if (!box) {
-        console.error("Leaderboard HTML Box ID পাওয়া যায়নি!");
-        alert("HTML এ leaderboard div এর id ঠিক করুন (যেমন: id='userReferralLeaderboard')");
-        return;
-    }
+    if (!box) return;
 
-    // শুরুতে লোডিং টেক্সট দেখানো
     box.innerHTML = `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:12px;">Loading leaderboard...</div>`;
 
     if (typeof database === 'undefined' || !database || !database.ref) {
@@ -3847,10 +3841,9 @@
         return;
     }
 
-    // ফায়ারবেস থেকে ডাটা ফেচ করা
     database.ref('users/').on('value', (snap) => {
         if (!snap.exists()) {
-            box.innerHTML = `<div style="text-align:center;color:#eab308;font-size:12px;padding:12px;">Database এ কোনো user পাওয়া যায়নি</div>`;
+            box.innerHTML = `<div style="text-align:center;color:#eab308;font-size:12px;padding:12px;">কোনো user পাওয়া যায়নি</div>`;
             return;
         }
 
@@ -3858,9 +3851,12 @@
         
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
-            const isBanned = u.banned === true || u.isBanned === true || u.status === 'banned';
             
-            // রেফারেল কাউন্ট চেক
+            // শক্তিশালী ব্যান চেক (string/boolean যাই হোক ধরে ফেলবে)
+            const isBanned = u.banned === true || u.banned === 'true' || u.banned === 1 || u.banned === '1' || 
+                             u.isBanned === true || u.isBanned === 'true' || u.isBanned === 1 || u.isBanned === '1' || 
+                             u.status === 'banned' || u.status === 'blocked';
+            
             let count = 0;
             if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
                 count = u.referralCount;
@@ -3886,10 +3882,9 @@
             };
         });
 
-        // ফিল্টার: ব্যান নয় এবং রেফারেল কাউন্ট > 0
+        // ব্যান ইউজার বাদ দিয়ে ফিল্টার করা
         const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
 
-        // শর্টিং লজিক
         activeList.sort((a, b) => {
             if (b.referralCount !== a.referralCount) {
                 return b.referralCount - a.referralCount;
@@ -3897,15 +3892,13 @@
             return a.firstReferralAt - b.firstReferralAt;
         });
 
-        // যদি কোনো ইউজারের রেফারেল ১ বা তার বেশি না থাকে
         if (activeList.length === 0) {
-            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">কাউরো এখনো ১টি ও রেফারেল নেই</div>`;
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No active referrals yet</div>`;
             return;
         }
 
         const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         
-        // রেন্ডারিং
         box.innerHTML = activeList.slice(0, 10).map((item, i) => 
             `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:8px;">
                 <div style="display:flex;align-items:center;gap:10px;">
@@ -3922,12 +3915,10 @@
     });
 }
 
-// এক্সিকিউশন
 document.addEventListener("DOMContentLoaded", () => {
     loadOnlineReferralLeaderboard();
 });
 
-  
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
       const m=document.getElementById('deleteAccountModal'); if(m) m.style.display='flex';
