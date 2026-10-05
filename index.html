@@ -3834,16 +3834,14 @@
 
     if (!box) return;
 
-    box.innerHTML = `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:12px;">Loading leaderboard...</div>`;
-
     if (typeof database === 'undefined' || !database || !database.ref) {
-        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:12px;">Database connected নয়</div>`;
+        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:8px;">Database not connected</div>`;
         return;
     }
 
-    database.ref('users/').on('value', (snap) => {
+    database.ref('users/').once('value').then(snap => {
         if (!snap.exists()) {
-            box.innerHTML = `<div style="text-align:center;color:#eab308;font-size:12px;padding:12px;">কোনো user পাওয়া যায়নি</div>`;
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No users found</div>`;
             return;
         }
 
@@ -3852,39 +3850,36 @@
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
             
-            // রেফার ব্যান চেক
-            const refBan = u.referralBanned || u.refBanned || u.isReferralBanned || u.referral_banned;
-            const isReferralBanned = 
-                (refBan === true || refBan === 'true' || refBan === 1 || refBan === '1' || refBan === 'yes');
+            // ব্যান বা রেফার-ব্যান চেক (স্ক্রিনশটের ট্রানজেকশন লজিক অনুযায়ী অ্যান্টিবট বা ব্যান ফ্ল্যাগ হ্যান্ডেল করা)
+            const isBanned = u.banned === true || u.isBanned === true || u.referralBanned === true || u.antibot_suspicious === true;
             
+            // রেফারেল কাউন্ট বের করা (যাতে নেগেটিভ বা জিরো হ্যান্ডেল হয়)
             let count = 0;
             if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
                 count = u.referralCount;
-            } else if (typeof u.referralsCount === 'number') {
-                count = u.referralsCount;
-            } else if (u.referrals && typeof u.referrals::object === 'object' && u.referrals !== null) {
+            } else if (u.referrals && typeof u.referrals === 'object') {
                 count = Object.keys(u.referrals).length;
             }
 
-            let time = Number(u.firstReferralAt || u.joinedAt || 0);
+            // প্রথম রেফারেল বা জয়েনিং টাইম হ্যান্ডেলিং
+            let time = Number(u.firstReferralAt);
             if (isNaN(time) || time < 100000000000) {
                 time = 9999999999999; 
             }
 
-            const userName = u.userName || u.username || u.name || u.first_name || ('User ' + uid.substring(0, 5));
-
             return {
                 id: uid,
-                name: userName,
+                name: u.userName || u.name || ('User ' + uid.substring(0, 4)),
                 firstReferralAt: time,
                 referralCount: Number(count) || 0,
-                isReferralBanned: isReferralBanned
+                isBanned: isBanned
             };
         });
 
-        // কড়া ফিল্টার: রেফার ব্যান থাকলে অথবা রেফার কাউন্ট ১ এর কম (০ বা মাইনাস) হলে বাদ যাবে
-        const activeList = list.filter(u => !u.isReferralBanned && u.referralCount > 0);
+        // ফিল্টারিং: ব্যান ইউজার এবং যাদের রেফারেল কাউন্ট ১ এর কম (০ বা মাইনাস), তারা বাদ যাবে
+        const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
 
+        // সর্টিং: প্রথমে বেশি রেফারেল, রেফারেল সমান হলে যার টাইম আগে সে উপরে থাকবে
         activeList.sort((a, b) => {
             if (b.referralCount !== a.referralCount) {
                 return b.referralCount - a.referralCount;
@@ -3899,6 +3894,7 @@
 
         const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         
+        // টপ ১০ লিডারবোর্ড রেন্ডার
         box.innerHTML = activeList.slice(0, 10).map((item, i) => 
             `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:8px;">
                 <div style="display:flex;align-items:center;gap:10px;">
@@ -3909,15 +3905,11 @@
             </div>`
         ).join('');
 
-    }, (error) => {
-        console.error("Firebase Error:", error);
-        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:12px;">Error: ${error.message}</div>`;
+    }).catch(err => {
+        console.error("Leaderboard Error:", err);
+        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:8px;">Failed to load leaderboard</div>`;
     });
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-    loadOnlineReferralLeaderboard();
-});
 
 
     // ==================== USER SELF DELETE ====================
