@@ -3763,81 +3763,167 @@
       }).catch(() => {});
     }
 
-    // ONE-TIME REFERRAL REWARD: exactly +50 ADI$ for each referred user.
-    // The referral record is written inside a Firebase transaction so repeated
-    // page loads / Telegram retries cannot award the same referral twice.
-    function getReferralStartParam() {
-      if (!isTelegramMode()) return '';
-      try {
-        return String((tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '').trim();
-      } catch (e) {
+    // ONE-TIME REFERRAL REWARD: exactly +50 ADIS for each referred user.
+// The referral record is written inside a Firebase transaction so repeated
+// page loads / Telegram retries cannot award the same referral twice.
+
+function getReferralStartParam() {
+    if (!isTelegramMode()) return '';
+    try {
+        const tg = window.Telegram && window.Telegram.WebApp;
+        return String((tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '').trim();
+    } catch (e) {
         return '';
-      }
+    }
+}
+
+function processOneTimeReferral() {
+    if (!isTelegramMode() || typeof database === 'undefined' || !database.ref) return;
+
+    const referrerId = getReferralStartParam();
+    if (!referrerId || !userId || referrerId === String(userId)) return;
+
+    const currentUserId = String(userId);
+    if (window._accountBanned) return;
+
+    // Telegram User information extraction for proper Username/Name display
+    const tg = window.Telegram && window.Telegram.WebApp;
+    const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
+
+    let displayUserName = "User " + currentUserId;
+    if (tgUser) {
+        if (tgUser.username) {
+            displayUserName = "@" + tgUser.username;
+        } else if (tgUser.first_name) {
+            displayUserName = tgUser.first_name + (tgUser.last_name ? " " + tgUser.last_name : "");
+        }
+    } else if (typeof userName !== 'undefined' && userName && userName !== 'Browser Miner') {
+        displayUserName = userName;
     }
 
-    function processOneTimeReferral() {
-      if (!isTelegramMode() || typeof database === 'undefined' || !database.ref) return;
-      const referrerId = getReferralStartParam();
-      if (!referrerId || !userId || referrerId === String(userId)) return;
-      const referredUid = String(userId);
-      if (window.__accountBanned) return;
+    const userRef = database.ref('users/' + currentUserId);
 
-      database.ref('users/' + referredUid).once('value').then(userSnap => {
-        const referredData = userSnap.exists() ? (userSnap.val() || {}) : {};
-        // A member can receive the referral relationship/bonus only once.
-        // The first valid referral link used by this account wins; later links do nothing.
+    userRef.once('value').then(userSnap => {
+        const referredData = userSnap.exists() ? userSnap.val() : {};
+
+        // Stop referral reward if referred user is already banned or processed
+        if (isAccountBannedData(referredData)) return;
         if (referredData.referredBy || referredData.referralProcessed === true) return;
-        if (isAccountBannedData(referredData) || (referredData.antiBot && referredData.antiBot.suspicious === true)) return;
+        if (referredData.antiBot && referredData.antiBot.suspicious === true) return;
 
         const referrerPath = database.ref('users/' + referrerId);
+
         return referrerPath.transaction(current => {
-          if (!current || isAccountBannedData(current)) return current;
-          if (current.antiBot && current.antiBot.suspicious === true) return current;
-          const referrals = current.referrals && typeof current.referrals === 'object' ? current.referrals : {};
-          if (Object.prototype.hasOwnProperty.call(referrals, referredUid)) return current;
-          const referralNow = Date.now();
-          current.balance = (Number(current.balance) || 0) + 50;
-          current.referrals = referrals;
-          if (!current.firstReferralAt) current.firstReferralAt = referralNow;
-          current.referrals[referredUid] = {
-            name: userName || 'User', uid: referredUid, amount: 50, rewardedAt: referralNow,
-            avatar: userAvatarUrl || referredData.avatar || ''
-          };
-          current.history = current.history && typeof current.history === 'object' ? current.history : {};
-          current.history['ref_' + referredUid] = {
-            title:'Referral Bonus', amount:'+50 ADI$', date:new Date().toLocaleString(),
-            type:'Referral Reward', referredUser:referredUid, timestamp:referralNow
-          };
-          return current;
-        }).then(result => {
-          if (result && result.committed) {
-            const notifyNow = Date.now();
-            database.ref('notifications/' + referrerId + '/ref_' + referredUid).set({
-              title:'Referral Reward Received', message:'A new member joined through your referral. +50 ADI$ has been added.', type:'referral', timestamp:notifyNow
-            }).catch(()=>{});
-            queueTelegramNotification(referrerId,'Referral Reward Received','A new member joined through your referral. +50 ADI$ has been added.','referral');
-            return database.ref('users/' + referredUid).update({
-              referralProcessed:true, referredBy:referrerId, referralRewardedAt:notifyNow,
-              avatar: userAvatarUrl || referredData.avatar || ''
+            if (!current) return current;
+
+            // Stop referral reward if referrer is banned or suspicious
+            if (isAccountBannedData(current)) return current;
+            if (current.antiBot && current.antiBot.suspicious === true) return current;
+
+            const referrals = (current.referrals && typeof current.referrals === 'object') ? current.referrals : {};
+
+            if (Object.prototype.hasOwnProperty.call(referrals, currentUserId)) return current;
+
+            const referralNow = Date.now();
+            const currentBalance = Number(current.balance) || 0;
+
+            // Save referred user details using proper name instead of plain ID
+            referrals[currentUserId] = {
+                name: displayUserName,
+                uid: currentUserId,
+                amount: 50,
+                recordedAt: referralNow,
+                avatar: (referredData && referredData.avatar) ? referredData.avatar : '',
+                status: isAccountBannedData(referredData) ? 'banned' : 'active'
+            };
+
+            const totalReferralCount = Object.keys(referrals).length;
+
+            const history = Array.isArray(current.history) ? current.history : [];
+            history.push({
+                type: 'Referral Bonus',
+                amount: '+50 ADIS',
+                date: new Date().toLocaleString(),
+                referredUser: displayUserName,
+                timestamp: referralNow
             });
-          }
+
+            // Update Referrer balance, referral object, and total referral count
+            current.balance = currentBalance + 50;
+            current.referrals = referrals;
+            current.referralCount = totalReferralCount;
+            current.history = history;
+            if (!current.firstReferralAt) current.firstReferralAt = referralNow;
+
+            return current;
+        }).then(result => {
+            if (result && result.committed) {
+                const notifyNow = Date.now();
+
+                // Send referral notification to referrer
+                database.ref('notifications/' + referrerId + '/ref_' + currentUserId).set({
+                    title: 'Referral Reward Received!',
+                    message: `A new member (${displayUserName}) joined through your referral. +50 ADIS has been added to your balance.`,
+                    timestamp: notifyNow
+                }).catch(() => {});
+
+                // Mark current user as processed
+                userRef.update({
+                    referralProcessed: true,
+                    referredBy: referrerId,
+                    referralRewardedAt: notifyNow
+                });
+            }
         });
-      }).catch(()=>{});
-    }
+    }).catch(() => {});
+}
 
+function loadUserReferralLeaderboard() {
+    const box = document.getElementById('userReferralLeaderboard');
+    if (!box || typeof database === 'undefined' || !database.ref) return;
 
-    function loadUserReferralLeaderboard(){
-      const box=document.getElementById('userReferralLeaderboard');
-      if(!box || typeof database==='undefined' || !database.ref) return;
-      database.ref('users').on('value', snap=>{
-        const users=snap.val()||{};
-        const list=Object.keys(users).map(uid=>{const u=users[uid]||{}; const banned=u.banned===true||u.isBanned===true||String(u.accountStatus||'').toLowerCase()==='banned'; const refs=u.referrals&&typeof u.referrals==='object'?u.referrals:{}; const activeRefIds=Object.keys(refs).filter(rid=>{const ru=users[rid]||{}; return !isAccountBannedData(ru) && !(ru.antiBot&&ru.antiBot.suspicious===true);}); const count=activeRefIds.length; const activeTimes=activeRefIds.map(rid=>Number(refs[rid]&&refs[rid].rewardedAt)||0).filter(Boolean); const first=Number(u.firstReferralAt)||activeTimes.sort((a,b)=>a-b)[0]||0; return {uid,name:u.username||u.name||'User',count,first,banned};}).filter(x=>x.count>0&&!x.banned);
-        list.sort((a,b)=>(a.first||Infinity)-(b.first||Infinity)||b.count-a.count);
-        if(!list.length){box.innerHTML='<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referrals yet.</div>';return;}
-        const esc=v=>String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
-        box.innerHTML=list.slice(0,10).map((x,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);"><div style="display:flex;align-items:center;gap:9px;"><b style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(251,191,36,.12);color:#fbbf24;font-size:10px;">${i+1}</b><div><div style="font-size:11px;font-weight:800;color:#fff;">${esc(x.name)}</div><div style="font-size:9px;color:#64748b;">${x.first?new Date(x.first).toLocaleString():''}</div></div></div><b style="font-size:11px;color:#4ade80;">${x.count} referrals</b></div>`).join('');
-      });
-    }
+    database.ref('users/').once('value', snap => {
+        const users = snap.val() || {};
+        const list = Object.keys(users).map(uid => {
+            const u = users[uid] || {};
+            const isBanned = u.banned === true || u.isBanned === true;
+            
+            // Calculate referral count accurately
+            let count = Number(u.referralCount) || 0;
+            if (!count && u.referrals && typeof u.referrals === 'object') {
+                count = Object.keys(u.referrals).length;
+            }
+
+            return {
+                id: uid,
+                name: u.userName || ("User " + uid),
+                count: count,
+                isBanned: isBanned
+            };
+        });
+
+        // Filter out banned accounts and sort by highest referral count
+        const activeList = list.filter(u => !u.isBanned);
+        activeList.sort((a, b) => b.count - a.count);
+
+        if (activeList.length === 0) {
+            box.innerHTML = '<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referral data found</div>';
+            return;
+        }
+
+        let html = '';
+        activeList.slice(0, 10).forEach((item, index) => {
+            const escName = String(item.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                <span style="font-size:12px;color:#f8fafc;">#${index + 1} ${escName}</span>
+                <span style="font-size:12px;color:#10b981;font-weight:bold;">${item.count} Refers</span>
+            </div>`;
+        });
+
+        box.innerHTML = html;
+    });
+}
+
 
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
