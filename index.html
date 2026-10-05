@@ -3775,12 +3775,7 @@ if (isTelegramMode() && typeof database !== 'undefined' && database.ref) {
     }
 }
   
-
-
-     // ONE-TIME REFERRAL REWARD: exactly +50 ADIS for each referred user.
-// The referral record is written inside a Firebase transaction so repeated
-// page loads / Telegram retries cannot award the same referral twice.
-
+// ONE-TIME REFERRAL REWARD: exactly +50 ADIS for each referred user.
 function getReferralStartParam() {
     if (!isTelegramMode()) return '';
     try {
@@ -3800,7 +3795,6 @@ function processOneTimeReferral() {
     const currentUserId = String(userId);
     if (window._accountBanned) return;
 
-    // Telegram User information extraction for proper Username/Name display
     const tg = window.Telegram && window.Telegram.WebApp;
     const tgUser = (tg && tg.initDataUnsafe) ? tg.initDataUnsafe.user : null;
 
@@ -3820,7 +3814,6 @@ function processOneTimeReferral() {
     userRef.once('value').then(userSnap => {
         const referredData = userSnap.exists() ? userSnap.val() : {};
 
-        // Stop referral reward if referred user is already banned or processed
         if (isAccountBannedData(referredData)) return;
         if (referredData.referredBy || referredData.referralProcessed === true) return;
         if (referredData.antiBot && referredData.antiBot.suspicious === true) return;
@@ -3830,7 +3823,6 @@ function processOneTimeReferral() {
         return referrerPath.transaction(current => {
             if (!current) return current;
 
-            // Stop referral reward if referrer is banned or suspicious
             if (isAccountBannedData(current)) return current;
             if (current.antiBot && current.antiBot.suspicious === true) return current;
 
@@ -3841,7 +3833,6 @@ function processOneTimeReferral() {
             const referralNow = Date.now();
             const currentBalance = Number(current.balance) || 0;
 
-            // Save referred user details using proper name instead of plain ID
             referrals[currentUserId] = {
                 name: displayUserName,
                 uid: currentUserId,
@@ -3862,7 +3853,6 @@ function processOneTimeReferral() {
                 timestamp: referralNow
             });
 
-            // Update Referrer balance, referral object, and total referral count
             current.balance = currentBalance + 50;
             current.referrals = referrals;
             current.referralCount = totalReferralCount;
@@ -3874,14 +3864,12 @@ function processOneTimeReferral() {
             if (result && result.committed) {
                 const notifyNow = Date.now();
 
-                // Send referral notification to referrer
                 database.ref('notifications/' + referrerId + '/ref_' + currentUserId).set({
                     title: 'Referral Reward Received!',
                     message: `A new member (${displayUserName}) joined through your referral. +50 ADIS has been added to your balance.`,
                     timestamp: notifyNow
                 }).catch(() => {});
 
-                // Mark current user as processed and sync name in database
                 userRef.update({
                     userName: displayUserName,
                     referralProcessed: true,
@@ -3890,12 +3878,25 @@ function processOneTimeReferral() {
                 });
             }
         });
-    }).catch(() => {});
+    }).catch(err => console.error("Referral process error:", err));
 }
 
 function loadUserReferralLeaderboard() {
-    const box = document.getElementById('userReferralLeaderboard');
-    if (!box || typeof database === 'undefined' || !database.ref) return;
+    // Target container finding (Primary ID, or Fallbacks)
+    const box = document.getElementById('userReferralLeaderboard') || 
+                document.getElementById('referralLeaderboard') || 
+                document.getElementById('leaderboardList');
+
+    if (!box) {
+        console.error("Leaderboard Container element not found! Please check HTML ID.");
+        return;
+    }
+
+    if (typeof database === 'undefined' || !database.ref) {
+        console.error("Firebase Database is not initialized!");
+        box.innerHTML = `<div style="text-align:center; color:#ef4444; font-size:12px; padding:12px;">Database connection error</div>`;
+        return;
+    }
 
     database.ref('users/').once('value', snap => {
         const users = snap.val() || {};
@@ -3903,13 +3904,11 @@ function loadUserReferralLeaderboard() {
             const u = users[uid] || {};
             const isBanned = u.banned === true || u.isBanned === true;
             
-            // Calculate referral count accurately
             let count = Number(u.referralCount) || 0;
             if (!count && u.referrals && typeof u.referrals === 'object') {
                 count = Object.keys(u.referrals).length;
             }
 
-            // Extract display name
             let rawName = u.userName || u.name || u.first_name || u.username;
             let displayName = "User " + uid;
 
@@ -3925,13 +3924,13 @@ function loadUserReferralLeaderboard() {
             };
         });
 
-        // Filter out banned accounts AND accounts with 0 referrals
+        // Filter: Non-banned and count > 0
         const activeList = list.filter(u => !u.isBanned && u.count > 0);
         activeList.sort((a, b) => b.count - a.count);
 
         if (activeList.length === 0) {
             box.innerHTML = `
-                <div style="text-align:center; color:#64748b; font-size:13px; font-weight:500; padding:24px 12px; background:#121820; border-radius:16px; border:1px solid rgba(255,255,255,0.06);">
+                <div style="text-align:center; color:#64748b; font-size:13px; font-weight:500; padding:20px 12px; background:#121820; border-radius:14px; border:1px solid rgba(255,255,255,0.06);">
                     No active referrals found yet.
                 </div>`;
             return;
@@ -3941,7 +3940,6 @@ function loadUserReferralLeaderboard() {
         activeList.slice(0, 10).forEach((item, index) => {
             const escName = String(item.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             
-            // Top 3 Rank Badges (Gold, Silver, Bronze)
             let badgeBg = 'rgba(255, 255, 255, 0.08)';
             let badgeColor = '#94a3b8';
             let borderStyle = '1px solid rgba(255, 255, 255, 0.06)';
@@ -3961,7 +3959,7 @@ function loadUserReferralLeaderboard() {
             html += `
             <div style="display:flex; align-items:center; justify-content:space-between; background:#121820; border:${borderStyle}; border-radius:14px; padding:12px 16px; margin-bottom:10px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
                 <div style="display:flex; align-items:center; gap:14px;">
-                    <div style="width:32px; height:32px; border-radius:50%; background:${badgeBg}; color:${badgeColor}; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; shrink:0;">
+                    <div style="width:32px; height:32px; border-radius:50%; background:${badgeBg}; color:${badgeColor}; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; flex-shrink:0;">
                         ${index + 1}
                     </div>
                     <span style="font-size:14px; font-weight:600; color:#f1f5f9; letter-spacing:0.2px;">${escName}</span>
@@ -3973,9 +3971,21 @@ function loadUserReferralLeaderboard() {
         });
 
         box.innerHTML = html;
+    }).catch(err => {
+        console.error("Leaderboard loading error:", err);
+        box.innerHTML = `<div style="text-align:center; color:#ef4444; font-size:12px; padding:12px;">Failed to load leaderboard data</div>`;
     });
-        }
-          
+}
+
+// Auto Execution on Page Load
+document.addEventListener('DOMContentLoaded', () => {
+    loadUserReferralLeaderboard();
+});
+  
+
+     
+                
+            
 
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
