@@ -3775,8 +3775,7 @@ if (isTelegramMode() && typeof database !== 'undefined' && database.ref) {
     }
 }
   
-
-        // ONE-TIME REFERRAL REWARD: exactly +50 ADI$ for each referred user.
+// ONE-TIME REFERRAL REWARD: exactly +50 ADI$ for each referred user.
 // The referral record is written inside a firebase transaction so repeated
 // page loads / Telegram retries cannot award the same referral twice.
 function getReferralStartParam() {
@@ -3821,7 +3820,6 @@ function processOneTimeReferral() {
                 avatar: userAvatarUrl || referredData.avatar || ''
             };
 
-            // ---- REFERRAL COUNT UPDATED HERE ----
             current.referralCount = Object.keys(referrals).length;
 
             current.history = (current.history && typeof current.history === 'object') ? current.history : {};
@@ -3891,7 +3889,6 @@ function loadOnlineReferralLeaderboard() {
     }).catch(() => {});
 }
 
-            
 
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
@@ -4324,74 +4321,7 @@ setupAdTrigger('dailyClaimBtn');
 setupAdTrigger('taskDailyClaimBtn');
 setupAdTrigger('walletConnBtn');
 setupAdTrigger('web3ConnectBtn');
-// =============================================================
-// GLOBAL USER NAME RESOLVER (FOR USER APP & ADMIN PANEL)
-// =============================================================
 
-/**
- * ফায়ারবেস বা টেলিগ্রামের অবজেক্ট থেকে ইউজারের আসল নাম ফিল্টার করে বের করার ফাংশন
- * @param {Object|String} userData - ফায়ারবেস ইউজার অবজেক্ট অথবা টেলিগ্রামের initDataUnsafe.user
- * @param {String|Number} fallbackUid - নাম না পাওয়া গেলে ব্যাকআপ আইডি
- * @returns {String} সঠিক ডাইনামিক নাম
- */
-function resolveDynamicUserName(userData, fallbackUid) {
-    if (!userData && !fallbackUid) return "User";
-
-    // যদি সরাসরি স্ট্রিং আকারে নাম পাঠানো হয়ে থাকে
-    if (typeof userData === 'string' && userData.trim() !== '' && userData !== 'Browser Miner' && userData !== 'User') {
-        const cleanStr = userData.trim();
-        return cleanStr.startsWith('@') ? cleanStr : '@' + cleanStr;
-    }
-
-    const data = (typeof userData === 'object' && userData !== null) ? userData : {};
-
-    // ১. প্রথম অগ্রাধিকার: টেলিগ্রাম হ্যান্ডেল বা ইউজারনেম (@username)
-    let rawUsername = data.username || data.userName || data.tgUsername || '';
-    if (rawUsername && String(rawUsername).trim() !== '' && rawUsername !== 'Browser Miner') {
-        rawUsername = String(rawUsername).trim();
-        return rawUsername.startsWith('@') ? rawUsername : '@' + rawUsername;
-    }
-
-    // ২. দ্বিতীয় অগ্রাধিকার: ফাস্ট নেম ও লাস্ট নেম
-    const firstName = String(data.first_name || data.firstName || '').trim();
-    const lastName = String(data.last_name || data.lastName || '').trim();
-    if (firstName) {
-        return firstName + (lastName ? ' ' + lastName : '');
-    }
-
-    // ৩. তৃতীয় অগ্রাধিকার: সাধারণ name প্রপার্টি
-    const generalName = String(data.name || '').trim();
-    if (generalName && generalName !== 'Browser Miner' && !generalName.startsWith('User ')) {
-        return generalName;
-    }
-
-    // ৪. ব্যাকআপ: ইউজার আইডি থেকে শর্ট ফর্ম জেনারেট (যেমন: Member #3033)
-    const uid = String(fallbackUid || data.uid || data.id || '').trim();
-    if (uid) {
-        return "Member #" + (uid.length > 4 ? uid.slice(-4) : uid);
-    }
-
-    return "User Member";
-}
-
-/**
- * HTML DOM Element-এ নাম অটোমেটিক সেট করার হেলপার ফাংশন
- * @param {String} elementId - HTML ট্যাগ আইডি
- * @param {Object|String} userData - ইউজার ডাটা
- * @param {String|Number} fallbackUid - ব্যাকআপ আইডি
- */
-function applyNameToElement(elementId, userData, fallbackUid) {
-    const elem = document.getElementById(elementId);
-    if (!elem) return;
-    
-    const finalName = resolveDynamicUserName(userData, fallbackUid);
-    
-    if (elem.tagName === 'INPUT' || elem.tagName === 'TEXTAREA') {
-        elem.value = finalName;
-    } else {
-        elem.textContent = finalName;
-    }
-  }
         
   </script>
 </body>
