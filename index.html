@@ -3852,17 +3852,17 @@
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
             
-            // শক্তিশালী ব্যান চেক (string/boolean যাই হোক ধরে ফেলবে)
-            const isBanned = u.banned === true || u.banned === 'true' || u.banned === 1 || u.banned === '1' || 
-                             u.isBanned === true || u.isBanned === 'true' || u.isBanned === 1 || u.isBanned === '1' || 
-                             u.status === 'banned' || u.status === 'blocked';
+            // রেফার ব্যান চেক
+            const refBan = u.referralBanned || u.refBanned || u.isReferralBanned || u.referral_banned;
+            const isReferralBanned = 
+                (refBan === true || refBan === 'true' || refBan === 1 || refBan === '1' || refBan === 'yes');
             
             let count = 0;
             if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
                 count = u.referralCount;
             } else if (typeof u.referralsCount === 'number') {
                 count = u.referralsCount;
-            } else if (u.referrals && typeof u.referrals === 'object') {
+            } else if (u.referrals && typeof u.referrals::object === 'object' && u.referrals !== null) {
                 count = Object.keys(u.referrals).length;
             }
 
@@ -3878,12 +3878,12 @@
                 name: userName,
                 firstReferralAt: time,
                 referralCount: Number(count) || 0,
-                isBanned: isBanned
+                isReferralBanned: isReferralBanned
             };
         });
 
-        // ব্যান ইউজার বাদ দিয়ে ফিল্টার করা
-        const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
+        // কড়া ফিল্টার: রেফার ব্যান থাকলে অথবা রেফার কাউন্ট ১ এর কম (০ বা মাইনাস) হলে বাদ যাবে
+        const activeList = list.filter(u => !u.isReferralBanned && u.referralCount > 0);
 
         activeList.sort((a, b) => {
             if (b.referralCount !== a.referralCount) {
@@ -3918,6 +3918,7 @@
 document.addEventListener("DOMContentLoaded", () => {
     loadOnlineReferralLeaderboard();
 });
+
 
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
