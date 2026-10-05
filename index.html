@@ -3827,18 +3827,58 @@
     }
 
 
-    function loadUserReferralLeaderboard(){
-      const box=document.getElementById('userReferralLeaderboard');
-      if(!box || typeof database==='undefined' || !database.ref) return;
-      database.ref('users').on('value', snap=>{
-        const users=snap.val()||{};
-        const list=Object.keys(users).map(uid=>{const u=users[uid]||{}; const banned=u.banned===true||u.isBanned===true||String(u.accountStatus||'').toLowerCase()==='banned'; const refs=u.referrals&&typeof u.referrals==='object'?u.referrals:{}; const activeRefIds=Object.keys(refs).filter(rid=>{const ru=users[rid]||{}; return !isAccountBannedData(ru) && !(ru.antiBot&&ru.antiBot.suspicious===true);}); const count=activeRefIds.length; const activeTimes=activeRefIds.map(rid=>Number(refs[rid]&&refs[rid].rewardedAt)||0).filter(Boolean); const first=Number(u.firstReferralAt)||activeTimes.sort((a,b)=>a-b)[0]||0; return {uid,name:u.username||u.name||'User',count,first,banned};}).filter(x=>x.count>0&&!x.banned);
-        list.sort((a,b)=>(a.first||Infinity)-(b.first||Infinity)||b.count-a.count);
-        if(!list.length){box.innerHTML='<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referrals yet.</div>';return;}
-        const esc=v=>String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
-        box.innerHTML=list.slice(0,10).map((x,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);"><div style="display:flex;align-items:center;gap:9px;"><b style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(251,191,36,.12);color:#fbbf24;font-size:10px;">${i+1}</b><div><div style="font-size:11px;font-weight:800;color:#fff;">${esc(x.name)}</div><div style="font-size:9px;color:#64748b;">${x.first?new Date(x.first).toLocaleString():''}</div></div></div><b style="font-size:11px;color:#4ade80;">${x.count} referrals</b></div>`).join('');
-      });
-    }
+    function loadOnlineReferralLeaderboard() {
+    const box = document.getElementById('userReferralLeaderboard');
+    if (!box || typeof database === 'undefined' || !database.ref) return;
+
+    database.ref('users/').once('value', snap => {
+        const users = snap.val() || {};
+        const list = Object.keys(users).map(uid => {
+            const u = users[uid] || {};
+            const isBanned = u.banned === true || u.isBanned === true;
+            
+            // ডাটাবেসে referralCount না থাকলে referrals অবজেক্ট থেকে কাউন্ট করবে
+            let count = Number(u.referralCount);
+            if (isNaN(count) || count === 0) {
+                if (u.referrals && typeof u.referrals === 'object') {
+                    count = Object.keys(u.referrals).length;
+                } else {
+                    count = 0;
+                }
+            }
+
+            return {
+                id: uid,
+                name: u.userName || u.name || ('User ' + uid),
+                firstReferralAt: Number(u.firstReferralAt) || Date.now(),
+                referralCount: count,
+                isBanned: isBanned
+            };
+        });
+
+        // শুধু ব্যান ছাড়া এবং অন্তত ১টি রেফারেল থাকা ইউজার ফিল্টার করা
+        const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
+
+        // সঠিক শর্টিং লজিক:
+        // ১. যার রেফারেল বেশি সে আগে থাকবে (b.referralCount - a.referralCount)
+        // ২. রেফারেল সমান হলে যে আগে ১ম রেফারেল করেছে সে আগে থাকবে (a.firstReferralAt - b.firstReferralAt)
+        activeList.sort((a, b) => {
+            if (b.referralCount !== a.referralCount) {
+                return b.referralCount - a.referralCount;
+            }
+            return a.firstReferralAt - b.firstReferralAt;
+        });
+
+        if (activeList.length === 0) {
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:8px;">No referrals yet</div>`;
+            return;
+        }
+
+        const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        box.innerHTML = activeList.slice(0, 10).map((item, i) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;background:rgba(255,255,255,0.03);border-radius:8px;"><span style="color:#fff;font-size:13px;">${i + 1}. ${esc(item.name)}</span><span style="color:#10b981;font-size:12px;font-weight:600;">${item.referralCount} Refers</span></div>`).join('');
+    }).catch(() => {});
+}
+
 
     // ==================== USER SELF DELETE ====================
     function openDeleteAccountModal(){
