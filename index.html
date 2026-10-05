@@ -3827,22 +3827,99 @@
     }
 
 
-    // Referral Leaderboard Table
-    function loadReferralLeaderboard(users) {
-      const container = document.getElementById('refLeaderboardTable');
-      if(!container) return;
-      const ids=Object.keys(users||{}).filter(uid=>!adminUserIsBanned(users[uid]));
-      const list=ids.map(uid=>({uid,entries:getReferralEntriesForUid(users,uid)})).filter(x=>x.entries.length>0);
-      list.sort((a,b)=>b.entries.length-a.entries.length);
-      if(!list.length){ container.innerHTML='<div style="padding:16px;color:#64748b">No referral relationships found.</div>'; return; }
-      let html='<table><tr><th>Rank</th><th>Referrer</th><th>Referred Users</th><th>Total Referrals</th><th>Bonus</th></tr>';
-      list.slice(0,50).forEach((item,i)=>{
-        const u=users[item.uid]||{};
-        const names=item.entries.slice(0,5).map(x=>`<span class="leader-user" onclick="openBioModal('${escAdmin(x.rid)}')">${escAdmin(x.user.username||x.user.name||x.rid)}</span>`).join(', ');
-        html+=`<tr><td><b style="color:#fbbf24">#${i+1}</b></td><td><span class="leader-user" onclick="openBioModal('${escAdmin(item.uid)}')"><b>@${escAdmin(u.username||u.name||item.uid)}</b></span><br><small>${escAdmin(item.uid)}</small></td><td>${names}${item.entries.length>5?' …':''}</td><td><b>${item.entries.length}</b></td><td><b style="color:var(--accent-green)">${item.entries.length*50} ADI$</b></td></tr>`;
-      });
-      html+='</table>'; container.innerHTML=html;
+    function loadOnlineReferralLeaderboard() {
+    const box = document.getElementById('userReferralLeaderboard') || 
+                document.getElementById('referralLeaderboard') || 
+                document.getElementById('leaderboardList');
+
+    if (!box) {
+        console.error("Leaderboard HTML Box পাওয়া যায়নি!");
+        return;
     }
+
+    if (typeof database === 'undefined' || !database || !database.ref) {
+        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:12px;">Database initialized হয়নি</div>`;
+        return;
+    }
+
+    // ফায়ারবেস থেকে রিয়েলটাইম ডাটা লোড
+    database.ref('users/').on('value', (snap) => {
+        if (!snap.exists()) {
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No users found</div>`;
+            return;
+        }
+
+        const users = snap.val() || {};
+        
+        const list = Object.keys(users).map(uid => {
+            const u = users[uid] || {};
+            const isBanned = u.banned === true || u.isBanned === true || u.status === 'banned';
+            
+            // রেফারেল কাউন্ট বের করার বহুমুখী পদ্ধতি (যাতে মিস না করে)
+            let count = 0;
+            if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
+                count = u.referralCount;
+            } else if (typeof u.referralsCount === 'number') {
+                count = u.referralsCount;
+            } else if (u.referrals && typeof u.referrals === 'object') {
+                count = Object.keys(u.referrals).length;
+            }
+
+            // প্রথম রেফারেলের সময় হ্যান্ডেলিং
+            let time = Number(u.firstReferralAt || u.joinedAt || 0);
+            if (isNaN(time) || time < 100000000000) {
+                time = 9999999999999; 
+            }
+
+            // ইউজারের নাম খুঁজে বের করা (userName, username, name বা ID দিয়ে)
+            const userName = u.userName || u.username || u.name || u.first_name || ('User ' + uid.substring(0, 5));
+
+            return {
+                id: uid,
+                name: userName,
+                firstReferralAt: time,
+                referralCount: Number(count) || 0,
+                isBanned: isBanned
+            };
+        });
+
+        // ফিল্টার: ব্যান নয় এবং অন্তত ১টি রেফার আছে
+        const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
+
+        // সঠিক শর্টিং: প্রথমে বেশি রেফারেল, সমান হলে আগের টাইম
+        activeList.sort((a, b) => {
+            if (b.referralCount !== a.referralCount) {
+                return b.referralCount - a.referralCount;
+            }
+            return a.firstReferralAt - b.firstReferralAt;
+        });
+
+        if (activeList.length === 0) {
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No referrals yet</div>`;
+            return;
+        }
+
+        const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        
+        // ক্লিন ও সুন্দর UI রেন্ডারিং
+        box.innerHTML = activeList.slice(0, 10).map((item, i) => 
+            `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:8px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="color:#f59e0b;font-size:13px;font-weight:700;">${i + 1}</span>
+                    <span style="color:#fff;font-size:13px;font-weight:600;">${esc(item.name)}</span>
+                </div>
+                <span style="color:#10b981;font-size:12px;font-weight:700;">${item.referralCount} referrals</span>
+            </div>`
+        ).join('');
+
+    }, (error) => {
+        console.error("Firebase Error:", error);
+        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:12px;">Connection error</div>`;
+    });
+}
+
+// ফাংশন অটো-কল
+loadOnlineReferralLeaderboard();
 
   
     // ==================== USER SELF DELETE ====================
