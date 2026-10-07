@@ -3833,24 +3833,28 @@ function loadUserReferralLeaderboard(){
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
   }[ch]));
 
-  const isBadAccount = u =>
-    !u ||
-    isAccountBannedData(u) ||
-    String(u.accountStatus || '').toLowerCase() === 'deleted' ||
-    (u.antiBot && u.antiBot.suspicious === true);
+  const BAD = ['banned','ban','blocked','suspended','deleted'];
+  const isBadAccount = u => {
+    if (!u || typeof u !== 'object') return true;
+    if (u.banned === true || u.isBanned === true || u.blocked === true || u.isBlocked === true) return true;
+    if (String(u.banned).toLowerCase() === 'true' || String(u.isBanned).toLowerCase() === 'true') return true;
+    if (BAD.includes(String(u.status || '').trim().toLowerCase())) return true;
+    if (BAD.includes(String(u.accountStatus || '').trim().toLowerCase())) return true;
+    if (u.antiBot && u.antiBot.suspicious === true) return true;
+    return false;
+  };
 
   database.ref('users').on('value', snap => {
     const users = snap.val() || {};
 
     const list = Object.keys(users).map(uid => {
-      const u = users[uid] || {};
+      const u = users[uid];
       if (isBadAccount(u)) return null;
 
       const refs = (u.referrals && typeof u.referrals === 'object') ? u.referrals : {};
       const activeRefIds = Object.keys(refs).filter(rid => !isBadAccount(users[rid]));
       if (!activeRefIds.length) return null;
 
-      // used only for tie-breaking (not displayed)
       const first = activeRefIds
         .map(rid => Number(refs[rid] && refs[rid].rewardedAt) || 0)
         .filter(Boolean)
