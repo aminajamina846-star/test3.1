@@ -818,6 +818,45 @@
 </style>
 </head>
 <body>
+  <!-- Mandatory Join Popup -->
+<div id="mandatoryJoinModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.88); z-index:99999; align-items:center; justify-content:center; padding:15px; box-sizing:border-box;">
+  <div style="background:#1e293b; border:1px solid #334155; border-radius:16px; padding:20px; width:100%; max-width:380px; text-align:center; color:#fff; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <h3 style="margin-top:0; color:#38bdf8; font-size:18px;">Welcome to $ADI Bot! 👋</h3>
+    <p style="font-size:12px; color:#94a3b8; margin-bottom:18px;">Complete all mandatory tasks below to unlock and access the app ecosystem.</p>
+
+    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+      <!-- Telegram Channel -->
+      <a href="https://t.me/adiofficial" target="_blank" onclick="markClicked('tg_channel')" style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:12px 14px; border-radius:10px; color:#fff; text-decoration:none; border:1px solid rgba(255,255,255,0.05);">
+        <span style="font-size:13px;">📢 Join Telegram Channel</span>
+        <span id="status-tg_channel" style="color:#ef4444; font-size:11px; font-weight:bold;">Not Joined</span>
+      </a>
+
+      <!-- Telegram Group -->
+      <a href="https://t.me/+S3ua6paB" target="_blank" onclick="markClicked('tg_group')" style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:12px 14px; border-radius:10px; color:#fff; text-decoration:none; border:1px solid rgba(255,255,255,0.05);">
+        <span style="font-size:13px;">💬 Join Official Chat</span>
+        <span id="status-tg_group" style="color:#ef4444; font-size:11px; font-weight:bold;">Not Joined</span>
+      </a>
+
+      <!-- X / Twitter -->
+      <a href="https://x.com/adiairdrops" target="_blank" onclick="markClicked('x_follow')" style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:12px 14px; border-radius:10px; color:#fff; text-decoration:none; border:1px solid rgba(255,255,255,0.05);">
+        <span style="font-size:13px;">🐦 Follow Official X</span>
+        <span id="status-x_follow" style="color:#ef4444; font-size:11px; font-weight:bold;">Not Followed</span>
+      </a>
+
+      <!-- YouTube -->
+      <a href="https://youtube.com/@ADICommunity-i6m" target="_blank" onclick="markClicked('yt_sub')" style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:12px 14px; border-radius:10px; color:#fff; text-decoration:none; border:1px solid rgba(255,255,255,0.05);">
+        <span style="font-size:13px;">▶ Subscribe YouTube</span>
+        <span id="status-yt_sub" style="color:#ef4444; font-size:11px; font-weight:bold;">Not Subscribed</span>
+      </a>
+    </div>
+
+    <button id="verifyAllBtn" onclick="verifyMandatoryTasks()" style="width:100%; padding:12px; border:none; border-radius:10px; background:#0284c7; color:#fff; font-weight:bold; font-size:14px; cursor:pointer;">
+      Verify & Continue 🚀
+    </button>
+    <p id="verifyErrorMsg" style="color:#f43f5e; font-size:12px; margin-top:10px; display:none;"></p>
+  </div>
+</div>
+  
 
   <div id="lockScreen" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0b0f19; z-index: 99999; color: #fff; text-align: center; padding-top: 150px; font-family: sans-serif;">
       <h2 style="color: #ff4d4d; margin-bottom: 10px;">System Maintenance</h2>
@@ -4324,7 +4363,78 @@ setupAdTrigger('dailyClaimBtn');
 setupAdTrigger('taskDailyClaimBtn');
 setupAdTrigger('walletConnBtn');
 setupAdTrigger('web3ConnectBtn');
+let taskTracker = {
+    tg_channel: false,
+    tg_group: false,
+    x_follow: false,
+    yt_sub: false
+};
 
+// Page load hole check korbe
+window.addEventListener('DOMContentLoaded', () => {
+    const isVerified = localStorage.getItem('adi_mandatory_verified');
+    if (!isVerified) {
+        const modal = document.getElementById('mandatoryJoinModal');
+        if (modal) modal.style.display = 'flex';
+    }
+});
+
+// User link-e click korle tracker update hobe
+function markClicked(taskId) {
+    taskTracker[taskId] = true;
+    const statusElem = document.getElementById(`status-${taskId}`);
+    if (statusElem) {
+        statusElem.innerText = "Checking...";
+        statusElem.style.color = "#f59e0b";
+    }
+}
+
+// Auto Verify function
+function verifyMandatoryTasks() {
+    const errorElem = document.getElementById('verifyErrorMsg');
+    const btn = document.getElementById('verifyAllBtn');
+    if (errorElem) errorElem.style.display = 'none';
+    if (btn) btn.innerText = "Verifying...";
+
+    let allClicked = true;
+    for (let key in taskTracker) {
+        if (!taskTracker[key]) {
+            allClicked = false;
+            break;
+        }
+    }
+
+    if (!allClicked) {
+        setTimeout(() => {
+            if (btn) btn.innerText = "Verify & Continue 🚀";
+            if (errorElem) {
+                errorElem.innerText = "Please click and join all links first!";
+                errorElem.style.display = 'block';
+            }
+        }, 500);
+        return;
+    }
+
+    // Shob link click kora thakle status Green hobe ebong App unlock hobe
+    setTimeout(() => {
+        for (let key in taskTracker) {
+            const statusElem = document.getElementById(`status-${key}`);
+            if (statusElem) {
+                statusElem.innerText = "Joined ✓";
+                statusElem.style.color = "#10b981";
+            }
+        }
+
+        localStorage.setItem('adi_mandatory_verified', 'true');
+
+        setTimeout(() => {
+            const modal = document.getElementById('mandatoryJoinModal');
+            if (modal) modal.style.display = 'none';
+        }, 800);
+
+    }, 1000);
+}
+  
   </script>
 </body>
 </html> 
