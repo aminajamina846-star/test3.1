@@ -3827,89 +3827,53 @@
     }
 
 
-    function loadOnlineReferralLeaderboard() {
-    const box = document.getElementById('userReferralLeaderboard') || 
-                document.getElementById('referralLeaderboard') || 
-                document.getElementById('leaderboardList');
+    function loadInlineReferralLeaderboard() {
+    const box = document.getElementById('userReferralLeaderboard');
+    if (!box || typeof database === 'undefined' || !database.ref) return;
 
-    if (!box) return;
-
-    if (typeof database === 'undefined' || !database || !database.ref) {
-        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:8px;">Database not connected</div>`;
-        return;
-    }
-
-    database.ref('users/').once('value').then(snap => {
-        if (!snap.exists()) {
-            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No users found</div>`;
-            return;
-        }
-
+    database.ref('users').on('value', snap => {
         const users = snap.val() || {};
-        
         const list = Object.keys(users).map(uid => {
             const u = users[uid] || {};
-            
-            // ব্যান বা রেফার-ব্যান চেক (স্ক্রিনশটের ট্রানজেকশন লজিক অনুযায়ী অ্যান্টিবট বা ব্যান ফ্ল্যাগ হ্যান্ডেল করা)
-            const isBanned = u.banned === true || u.isBanned === true || u.referralBanned === true || u.antibot_suspicious === true;
-            
-            // রেফারেল কাউন্ট বের করা (যাতে নেগেটিভ বা জিরো হ্যান্ডেল হয়)
-            let count = 0;
-            if (typeof u.referralCount === 'number' && !isNaN(u.referralCount)) {
-                count = u.referralCount;
-            } else if (u.referrals && typeof u.referrals === 'object') {
-                count = Object.keys(u.referrals).length;
-            }
-
-            // প্রথম রেফারেল বা জয়েনিং টাইম হ্যান্ডেলিং
-            let time = Number(u.firstReferralAt);
-            if (isNaN(time) || time < 100000000000) {
-                time = 9999999999999; 
-            }
-
+            const refs = u.referrals && typeof u.referrals === 'object' ? Object.keys(u.referrals).length : 0;
             return {
-                id: uid,
-                name: u.userName || u.name || ('User ' + uid.substring(0, 4)),
-                firstReferralAt: time,
-                referralCount: Number(count) || 0,
-                isBanned: isBanned
+                uid: uid,
+                isBanned: u.isBanned === true,
+                count: refs,
+                first: u.firstReferralAt || Infinity,
+                userData: u
             };
-        });
+        }).filter(u => !u.isBanned && u.count > 0);
 
-        // ফিল্টারিং: ব্যান ইউজার এবং যাদের রেফারেল কাউন্ট ১ এর কম (০ বা মাইনাস), তারা বাদ যাবে
-        const activeList = list.filter(u => !u.isBanned && u.referralCount > 0);
-
-        // সর্টিং: প্রথমে বেশি রেফারেল, রেফারেল সমান হলে যার টাইম আগে সে উপরে থাকবে
-        activeList.sort((a, b) => {
-            if (b.referralCount !== a.referralCount) {
-                return b.referralCount - a.referralCount;
+        // ★★ আসল সর্টিং লজিক ★★
+        list.sort((a, b) => {
+            // ১. যার রেফারেল বেশি সে উপরে থাকবে (Descending)
+            if (b.count !== a.count) {
+                return b.count - a.count;
             }
-            return a.firstReferralAt - b.firstReferralAt;
+            // ২. রেফারেল সমান হলে যে আগে করেছে সে উপরে থাকবে (Ascending)
+            return a.first - b.first;
         });
 
-        if (activeList.length === 0) {
-            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:12px;">No active referrals yet</div>`;
+        if (list.length === 0) {
+            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referral data found</div>`;
             return;
         }
 
-        const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        
-        // টপ ১০ লিডারবোর্ড রেন্ডার
-        box.innerHTML = activeList.slice(0, 10).map((item, i) => 
-            `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:8px;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="color:#f59e0b;font-size:13px;font-weight:700;">${i + 1}</span>
-                    <span style="color:#fff;font-size:13px;font-weight:600;">${esc(item.name)}</span>
+        // লিডারবোর্ড UI রেন্ডার করা (Top 10)
+        box.innerHTML = list.slice(0, 10).map((x, i) => {
+            const name = escapeHtml(x.userData.userName || x.userData.name || 'User');
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-weight:bold;color:#e2e8f0;width:18px;">${i + 1}</span>
+                    <span style="color:#f8fafc;font-size:13px;">${name}</span>
                 </div>
-                <span style="color:#10b981;font-size:12px;font-weight:700;">${item.referralCount} referrals</span>
-            </div>`
-        ).join('');
-
-    }).catch(err => {
-        console.error("Leaderboard Error:", err);
-        box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:12px;padding:8px;">Failed to load leaderboard</div>`;
+                <span style="color:#10b981;font-weight:bold;font-size:12px;">${x.count} referrals</span>
+            </div>`;
+        }).join('');
     });
 }
+
 
 
     // ==================== USER SELF DELETE ====================
