@@ -3841,17 +3841,15 @@
                 isBanned: u.isBanned === true,
                 count: refs,
                 first: u.firstReferralAt || Infinity,
-                userData: u
+                userName: u.userName || u.name || 'User'
             };
         }).filter(u => !u.isBanned && u.count > 0);
 
-        // ★★ আসল সর্টিং লজিক ★★
+        // সর্টিং লজিক (রেফারেল বেশি থাকলে উপরে, সমান হলে সময় দিয়ে)
         list.sort((a, b) => {
-            // ১. যার রেফারেল বেশি সে উপরে থাকবে (Descending)
             if (b.count !== a.count) {
                 return b.count - a.count;
             }
-            // ২. রেফারেল সমান হলে যে আগে করেছে সে উপরে থাকবে (Ascending)
             return a.first - b.first;
         });
 
@@ -3860,13 +3858,13 @@
             return;
         }
 
-        // লিডারবোর্ড UI রেন্ডার করা (Top 10)
+        // লিডারবোর্ড UI রেন্ডার করা
         box.innerHTML = list.slice(0, 10).map((x, i) => {
-            const name = escapeHtml(x.userData.userName || x.userData.name || 'User');
+            const safeName = String(x.userName).replace(/</g, "&lt;").replace(/>/g, "&gt;");
             return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span style="font-weight:bold;color:#e2e8f0;width:18px;">${i + 1}</span>
-                    <span style="color:#f8fafc;font-size:13px;">${name}</span>
+                    <span style="color:#f8fafc;font-size:13px;">${safeName}</span>
                 </div>
                 <span style="color:#10b981;font-weight:bold;font-size:12px;">${x.count} referrals</span>
             </div>`;
