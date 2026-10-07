@@ -3855,21 +3855,24 @@ function loadUserReferralLeaderboard(){
       const activeRefIds = Object.keys(refs).filter(rid => !isBadAccount(users[rid]));
       if (!activeRefIds.length) return null;
 
-      const first = activeRefIds
+      // time when this user reached the current referral count
+      // (time of the latest valid referral). Earlier = higher rank on ties.
+      const times = activeRefIds
         .map(rid => Number(refs[rid] && refs[rid].rewardedAt) || 0)
         .filter(Boolean)
-        .sort((a, b) => a - b)[0] || 0;
+        .sort((a, b) => a - b);
+      const reachedAt = times.length ? times[times.length - 1] : Infinity;
 
       return {
         name: u.username || u.name || u.firstName || ('User ' + String(uid).slice(-4)),
         count: activeRefIds.length,
-        first
+        reachedAt
       };
     }).filter(Boolean);
 
     list.sort((a, b) =>
       (b.count - a.count) ||
-      ((a.first || Infinity) - (b.first || Infinity))
+      (a.reachedAt - b.reachedAt)
     );
 
     if(!list.length){
