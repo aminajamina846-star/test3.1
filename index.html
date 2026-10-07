@@ -4363,159 +4363,52 @@ setupAdTrigger('dailyClaimBtn');
 setupAdTrigger('taskDailyClaimBtn');
 setupAdTrigger('walletConnBtn');
 setupAdTrigger('web3ConnectBtn');
-<!-- পপআপ মডালের জাভাস্ক্রিপ্ট (একদম নিচে থাকবে) -->
-<!-- ===== ADI JOIN GATE ===== -->
-<style>
-  #joinGate{display:none;position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:18px}
-  #joinGate .jg-box{width:100%;max-width:380px;max-height:92vh;overflow:auto;background:var(--card-bg,#141414);border:1px solid var(--card-border,rgba(255,255,255,.15));border-radius:20px;padding:20px;color:#fff;font-family:inherit}
-  #joinGate h3{margin:0 0 6px;font-size:19px;text-align:center}
-  #joinGate .jg-sub{margin:0 0 14px;font-size:12px;color:#94a3b8;text-align:center;line-height:1.5}
-  #joinGate .jg-row{display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
-  #joinGate .jg-row.ok{border-color:#22c55e}
-  #joinGate .jg-row.bad{border-color:#ef4444}
-  #joinGate .jg-ico{font-size:20px;width:26px;text-align:center}
-  #joinGate .jg-name{flex:1;font-size:13px;font-weight:700}
-  #joinGate .jg-name small{display:block;font-weight:400;font-size:10px;color:#94a3b8}
-  #joinGate .jg-btn{border:0;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;background:#e2e8f0;color:#000}
-  #joinGate .jg-verify{width:100%;margin-top:10px;padding:13px;font-size:14px;background:#22c55e;color:#000;border-radius:12px}
-  #joinGate .jg-verify:disabled{opacity:.5}
-  #joinGate .jg-msg{min-height:16px;margin-top:8px;font-size:12px;text-align:center;color:#f87171}
+// ===== JOIN GATE =====
+const JG_LINKS = [
+  { id: 'tg_channel', name: '📢 Telegram Channel', url: 'https://t.me/adioffici...' }, // full link din
+  { id: 'tg_chat',    name: '💬 Telegram Chat',    url: 'https://t.me/+S3ua6paB...' }, // full link din
+  { id: 'x',          name: '🐦 X (Twitter)',      url: 'https://x.com/adiairdrops' },
+  { id: 'youtube',    name: '▶️ YouTube',          url: 'https://www.youtube.com/@ADICommunity-i6m' }
+];
+const JG_VERIFY_API = ''; // server endpoint: POST {initData} -> {tg_channel:true, tg_chat:true}
+const jgOpened = {};
+const jgKey = () => 'adi_join_ok_' + userId;
 
-<div id="joinGate">
-  <div class="jg-box">
-    <h3>🌐 Join Our Community</h3>
-    <p class="jg-sub">Follow all official channels below, then tap <b>Verify</b> to continue to the app.</p>
-    <div id="jgList"></div>
-    <button class="jg-btn jg-verify" id="jgVerifyBtn">✅ Verify &amp; Continue</button>
-    <div class="jg-msg" id="jgMsg"></div>
-  </div>
-</div>
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!isTelegramMode() || localStorage.getItem(jgKey())) return;
+  const s = await database.ref('users/' + userId + '/joinVerified').once('value');
+  if (s.val() === true) return localStorage.setItem(jgKey(), '1');
 
-(function () {
-  /* ---------- CONFIG ---------- */
-  const JOIN_ITEMS = [
-    { id: 'tg_channel', icon: '📢', name: 'Telegram Channel', hint: 'Announcements',
-      url: 'https://t.me/adioffici...',   // <-- full link din
-      verify: 'telegram' },
-    { id: 'tg_chat', icon: '💬', name: 'Telegram Chat', hint: 'Community chat',
-      url: 'https://t.me/+S3ua6paB...',   // <-- full link din
-      verify: 'telegram' },
-    { id: 'x', icon: '🐦', name: 'X (Twitter)', hint: 'Follow @adiairdrops',
-      url: 'https://x.com/adiairdrops',
-      verify: 'click' },
-    { id: 'youtube', icon: '▶️', name: 'YouTube', hint: 'Subscribe',
-      url: 'https://www.youtube.com/@ADICommunity-i6m',
-      verify: 'click' }
-  ];
+  document.getElementById('jgList').innerHTML = JG_LINKS.map(l =>
+    `<button data-id="${l.id}" style="display:block;width:100%;margin:6px 0;padding:11px;border:1px solid #444;border-radius:10px;background:#222;color:#fff">${l.name}</button>`
+  ).join('');
+  document.getElementById('joinGate').style.display = 'flex';
+});
 
-  // Server endpoint (Bot API getChatMember diye check korbe)
-  // POST { initData, userId } -> { tg_channel: true/false, tg_chat: true/false }
-  const VERIFY_API_URL = '';
+document.getElementById('jgList').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const l = JG_LINKS.find(x => x.id === b.dataset.id);
+  jgOpened[l.id] = Date.now();
+  b.style.borderColor = '#22c55e';
+  /t\.me/.test(l.url) ? tg.openTelegramLink(l.url) : tg.openLink(l.url);
+};
 
-  const MIN_WAIT_MS = 8000;
-  /* ---------------------------- */
-
-  const $ = id => document.getElementById(id);
-  const opened = {};
-  const state = {};
-  const uid = () => (typeof userId !== 'undefined' ? String(userId) : '');
-  const cacheKey = () => 'adi_join_ok_' + uid();
-
-  function inTelegram() {
-    try { return typeof isTelegramMode === 'function' ? isTelegramMode() : !!(window.Telegram && Telegram.WebApp && Telegram.WebApp.initData); }
-    catch (e) { return false; }
-  }
-
-  function openLink(url) {
-    const w = window.Telegram && Telegram.WebApp;
+document.getElementById('jgVerify').onclick = async () => {
+  const msg = document.getElementById('jgMsg');
+  const missing = JG_LINKS.find(l => !jgOpened[l.id] || Date.now() - jgOpened[l.id] < 8000);
+  if (missing) { msg.textContent = '❌ Please follow: ' + missing.name; return; }
+  if (JG_VERIFY_API) {
     try {
-      if (w && /^https:\/\/t\.me\//i.test(url) && w.openTelegramLink) return w.openTelegramLink(url);
-      if (w && w.openLink) return w.openLink(url);
-    } catch (e) {}
-    window.open(url, '_blank');
+      const r = await (await fetch(JG_VERIFY_API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }) })).json();
+      if (!r.tg_channel || !r.tg_chat) { msg.textContent = '❌ Telegram e join koren, tarpor abar Verify chapun.'; return; }
+    } catch (e) { msg.textContent = 'Error, abar try korun.'; return; }
   }
-
-  function render() {
-    $('jgList').innerHTML = JOIN_ITEMS.map(it => `
-      <div class="jg-row ${state[it.id] === true ? 'ok' : state[it.id] === false ? 'bad' : ''}">
-        <div class="jg-ico">${it.icon}</div>
-        <div class="jg-name">${it.name}<small>${it.hint}</small></div>
-        <button class="jg-btn" data-id="${it.id}">${state[it.id] === true ? '✔ Done' : 'Join'}</button>
-      </div>`).join('');
-    $('jgList').querySelectorAll('button[data-id]').forEach(b => {
-      b.onclick = () => {
-        const it = JOIN_ITEMS.find(x => x.id === b.dataset.id);
-        opened[it.id] = Date.now();
-        state[it.id] = undefined;
-        openLink(it.url);
-        $('jgMsg').textContent = '';
-        b.textContent = 'Opened';
-      };
-    });
-  }
-
-  function finish() {
-    try { localStorage.setItem(cacheKey(), '1'); } catch (e) {}
-    try { database.ref('users/' + uid() + '/joinVerified').set(true); } catch (e) {}
-    try { database.ref('users/' + uid() + '/joinVerifiedAt').set(Date.now()); } catch (e) {}
-    $('joinGate').style.display = 'none';
-    if (typeof showToast === 'function') showToast('✅ Verified! Welcome to ADI.');
-  }
-
-  async function verify() {
-    const btn = $('jgVerifyBtn'), msg = $('jgMsg');
-    msg.textContent = '';
-
-    for (const it of JOIN_ITEMS) {
-      if (!opened[it.id]) { msg.textContent = `Please join: ${it.name}`; state[it.id] = false; render(); return; }
-      if (Date.now() - opened[it.id] < MIN_WAIT_MS) { msg.textContent = `Please complete "${it.name}" first, then verify.`; return; }
-    }
-
-    btn.disabled = true; btn.textContent = 'Checking...';
-    try {
-      let tgRes = null;
-      if (VERIFY_API_URL) {
-        const r = await fetch(VERIFY_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: (window.Telegram && Telegram.WebApp.initData) || '', userId: uid() })
-        });
-        tgRes = await r.json();
-      }
-
-      let allOk = true;
-      JOIN_ITEMS.forEach(it => {
-        let ok = true;
-        if (it.verify === 'telegram' && tgRes) ok = tgRes[it.id] === true;
-        state[it.id] = ok;
-        if (!ok) { allOk = false; delete opened[it.id]; }
-      });
-      render();
-
-      if (allOk) finish();
-      else msg.textContent = '❌ You have not followed all channels yet. Please follow the red ones and verify again.';
-    } catch (e) {
-      msg.textContent = 'Verification failed. Check your internet and try again.';
-    }
-    btn.disabled = false; btn.textContent = '✅ Verify & Continue';
-  }
-
-  async function start() {
-    if (!inTelegram()) return;
-    if (!uid()) return;
-    try { if (localStorage.getItem(cacheKey()) === '1') return; } catch (e) {}
-    try {
-      const snap = await database.ref('users/' + uid() + '/joinVerified').once('value');
-      if (snap.val() === true) { try { localStorage.setItem(cacheKey(), '1'); } catch (e) {} return; }
-    } catch (e) {}
-    render();
-    $('jgVerifyBtn').onclick = verify;
-    $('joinGate').style.display = 'flex';
-  }
-
-  document.addEventListener('DOMContentLoaded', () => setTimeout(start, 800));
-})();
-<!-- ===== END ADI JOIN GATE ===== -->
+  localStorage.setItem(jgKey(), '1');
+  database.ref('users/' + userId + '/joinVerified').set(true);
+  document.getElementById('joinGate').style.display = 'none';
+};
+// ===== END JOIN GATE =====
   </script>
 </body>
 </html> 
