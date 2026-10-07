@@ -3827,70 +3827,518 @@
     }
 
 
-    function loadInlineReferralLeaderboard() {
-    const box = document.getElementById('userReferralLeaderboard');
-    if (!box || typeof database === 'undefined' || !database.ref) return;
+    // ================= REFERRAL LEADERBOARD =================
+// Safe Firebase referral leaderboard
+// - Banned users excluded
+// - Invalid/legacy users excluded
+// - Highest referral count first
+// - Same count হলে earlier referral time first
+// - Firebase loading error হলে Loading... এ আটকে থাকবে না
+// - HTML safely escaped
 
-    database.ref('users').on('value', snap => {
-        try {
-            const users = snap.val() || {};
-            const list = [];
-
-            Object.keys(users).forEach(uid => {
-                const u = users[uid] || {};
-                
-                // Mengira jumlah rujukan secara selamat
-                let refCount = 0;
-                if (u.referrals) {
-                    if (typeof u.referrals === 'object') {
-                        refCount = Object.keys(u.referrals).length;
-                    } else if (typeof u.referrals === 'number') {
-                        refCount = u.referrals;
-                    }
-                }
-
-                // Hanya masukkan pengguna yang tidak dibanned dan mempunyai sekurang-kurangnya 1 rujukan
-                if (!u.isBanned && refCount > 0) {
-                    list.push({
-                        uid: uid,
-                        count: refCount,
-                        first: Number(u.firstReferralAt) || Infinity,
-                        userName: u.userName || u.name || 'User'
-                    });
-                }
-            });
-
-            // Susunan Carta: Rujukan terbanyak di atas, jika sama pilih yang terdahulu
-            list.sort((a, b) => {
-                if (b.count !== a.count) {
-                    return b.count - a.count;
-                }
-                return a.first - b.first;
-            });
-
-            if (list.length === 0) {
-                box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referral data found</div>`;
-                return;
-            }
-
-            // Paparkan Top 10
-            box.innerHTML = list.slice(0, 10).map((x, i) => {
-                const safeName = String(x.userName).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="font-weight:bold;color:#e2e8f0;width:18px;">${i + 1}</span>
-                        <span style="color:#f8fafc;font-size:13px;">${safeName}</span>
-                    </div>
-                    <span style="color:#10b981;font-weight:bold;font-size:12px;">${x.count} referrals</span>
-                </div>`;
-            }).join('');
-
-        } catch (err) {
-            console.error("Leaderboard Error:", err);
-            box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:11px;padding:8px;">Failed to load leaderboard</div>`;
-        }
-    });
+function escapeLeaderboardHTML(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
+
+
+function isValidLeaderboardUser(user) {
+  if (!user || typeof user !== 'object') return false;
+
+  // Banned users never appear
+  if (user.banned === true) return false;
+  if (user.isBanned === true) return false;
+  if (user.bannedUser === true) return false;
+
+  // Suspicious / bot accounts never appear
+  if (
+    user.bot === true ||
+    user.suspicious === true ||
+    user.isBot === true
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+
+function getLeaderboardReferralCount(user) {
+  if (!user || typeof user !== 'object') return 0;
+
+  let referrals = user.referrals;
+
+  // referrals object
+  if (referrals && typeof referrals === 'object') {
+    return Object.keys(referrals).filter(key => {
+      const ref = referrals[key];
+
+      if (!ref || typeof ref !== 'object') return true;
+
+      if (ref.banned === true) return false;
+      if (ref.isBanned === true) return false;
+      if (ref.bot === true) return false;
+      if (ref.suspicious === true) return false;
+
+      return true;
+    }).length;
+  }
+
+  // referrals array
+  if (Array.isArray(referrals)) {
+    return referrals.length;
+  }
+
+  // fallback fields
+  const countCandidates = [
+    user.referralCount,
+    user.referralsCount,
+    user.totalReferrals,
+    user.invitedCount
+  ];
+
+  for (const value of countCandidates) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number >= 0) {
+      return Math.floor(number);
+    }
+  }
+
+  return 0;
+}
+
+
+function getLeaderboardFirstReferralTime(user) {
+  if (!user || typeof user !== 'object') {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const possibleDates = [
+    user.firstReferralAt,
+    user.firstReferralDate,
+    user.firstReferralTime,
+    user.referralStartedAt,
+    user.createdAt
+  ];
+
+  for (const value of possibleDates) {
+    if (!value) continue;
+
+    // Firebase Timestamp
+    if (typeof value === 'object' && value.seconds) {
+      const timestamp = Number(value.seconds) * 1000;
+
+      if (Number.isFinite(timestamp)) {
+        return timestamp;
+      }
+    }
+
+    const parsed = Date.parse(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+
+    const number = Number(value);
+
+    if (Number.isFinite(number) && number > 0) {
+      return number;
+    }
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
+
+function getLeaderboardUserName(user, uid) {
+  if (!user || typeof user !== 'object') {
+    return 'User';
+  }
+
+  const name =
+    user.userName ||
+    user.username ||
+    user.name ||
+    user.firstName ||
+    user.displayName ||
+    '';
+
+  let cleanName = String(name).trim();
+
+  // Don't show technical Firebase IDs as usernames
+  if (
+    !cleanName ||
+    cleanName === 'undefined' ||
+    cleanName === 'null' ||
+    cleanName.length > 40
+  ) {
+    cleanName = 'User';
+  }
+
+  return cleanName;
+}
+
+
+function formatLeaderboardDate(timestamp) {
+  if (!timestamp || timestamp === Number.MAX_SAFE_INTEGER) {
+    return '';
+  }
+
+  try {
+    const date = new Date(timestamp);
+
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    return date.toLocaleString();
+  } catch (e) {
+    return '';
+  }
+}
+
+
+function loadUserReferralLeaderboard() {
+
+  const box = document.getElementById('userReferralLeaderboard');
+
+  if (!box) {
+    console.warn(
+      'Referral leaderboard container #userReferralLeaderboard not found.'
+    );
+    return;
+  }
+
+  // Prevent multiple Firebase listeners
+  if (box.dataset.leaderboardLoading === 'true') {
+    return;
+  }
+
+  box.dataset.leaderboardLoading = 'true';
+
+  // Initial state
+  box.innerHTML = `
+    <div style="
+      text-align:center;
+      padding:20px;
+      color:#94a3b8;
+      font-size:14px;
+    ">
+      Loading...
+    </div>
+  `;
+
+
+  // Firebase not ready
+  if (
+    typeof database === 'undefined' ||
+    !database ||
+    typeof database.ref !== 'function'
+  ) {
+
+    box.innerHTML = `
+      <div style="
+        text-align:center;
+        padding:20px;
+        color:#94a3b8;
+      ">
+        Leaderboard unavailable
+      </div>
+    `;
+
+    box.dataset.leaderboardLoading = 'false';
+    return;
+  }
+
+
+  const usersRef = database.ref('users');
+
+
+  // Safety timeout
+  let finished = false;
+
+  const timeout = setTimeout(() => {
+
+    if (finished) return;
+
+    finished = true;
+
+    box.innerHTML = `
+      <div style="
+        text-align:center;
+        padding:20px;
+        color:#94a3b8;
+      ">
+        Unable to load leaderboard
+      </div>
+    `;
+
+    box.dataset.leaderboardLoading = 'false';
+
+  }, 10000);
+
+
+  usersRef.once('value')
+    .then(snapshot => {
+
+      if (finished) return;
+
+      finished = true;
+      clearTimeout(timeout);
+
+      const data = snapshot && snapshot.exists()
+        ? snapshot.val()
+        : {};
+
+      const users = [];
+
+      if (!data || typeof data !== 'object') {
+
+        box.innerHTML = `
+          <div style="
+            text-align:center;
+            padding:20px;
+            color:#94a3b8;
+          ">
+            No leaderboard data
+          </div>
+        `;
+
+        box.dataset.leaderboardLoading = 'false';
+        return;
+      }
+
+
+      Object.keys(data).forEach(uid => {
+
+        const user = data[uid];
+
+        if (!isValidLeaderboardUser(user)) {
+          return;
+        }
+
+        const referralCount =
+          getLeaderboardReferralCount(user);
+
+        // Only users with referrals
+        if (referralCount <= 0) {
+          return;
+        }
+
+        const firstReferralAt =
+          getLeaderboardFirstReferralTime(user);
+
+        const userName =
+          getLeaderboardUserName(user, uid);
+
+        users.push({
+          uid,
+          user,
+          userName,
+          referralCount,
+          firstReferralAt
+        });
+
+      });
+
+
+      // ==========================================
+      // SORT
+      // 1. More referrals = higher position
+      // 2. Same referrals = earlier referral wins
+      // 3. Same time = UID stable sort
+      // ==========================================
+
+      users.sort((a, b) => {
+
+        if (b.referralCount !== a.referralCount) {
+          return b.referralCount - a.referralCount;
+        }
+
+        if (a.firstReferralAt !== b.firstReferralAt) {
+          return a.firstReferralAt - b.firstReferralAt;
+        }
+
+        return String(a.uid).localeCompare(String(b.uid));
+      });
+
+
+      // Show only top 20
+      const topUsers = users.slice(0, 20);
+
+
+      if (!topUsers.length) {
+
+        box.innerHTML = `
+          <div style="
+            text-align:center;
+            padding:20px;
+            color:#94a3b8;
+          ">
+            No referrals yet
+          </div>
+        `;
+
+        box.dataset.leaderboardLoading = 'false';
+        return;
+      }
+
+
+      // ==========================================
+      // BUILD LEADERBOARD
+      // ==========================================
+
+      let html = '';
+
+      topUsers.forEach((item, index) => {
+
+        const rank = index + 1;
+
+        const name =
+          escapeLeaderboardHTML(item.userName);
+
+        const count =
+          item.referralCount;
+
+        const date =
+          formatLeaderboardDate(item.firstReferralAt);
+
+        let medal = '';
+
+        if (rank === 1) {
+          medal = '🥇';
+        } else if (rank === 2) {
+          medal = '🥈';
+        } else if (rank === 3) {
+          medal = '🥉';
+        } else {
+          medal = String(rank);
+        }
+
+
+        html += `
+          <div style="
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            padding:14px 16px;
+            margin-bottom:8px;
+            border-radius:14px;
+            background:rgba(20,25,35,.72);
+            border:1px solid rgba(255,255,255,.08);
+            box-sizing:border-box;
+          ">
+
+            <div style="
+              display:flex;
+              align-items:center;
+              gap:12px;
+              min-width:0;
+            ">
+
+              <div style="
+                width:38px;
+                min-width:38px;
+                height:38px;
+                border-radius:50%;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                background:rgba(255,193,7,.10);
+                font-weight:700;
+                color:#f5c542;
+              ">
+                ${medal}
+              </div>
+
+
+              <div style="
+                min-width:0;
+              ">
+
+                <div style="
+                  font-weight:700;
+                  color:#fff;
+                  font-size:15px;
+                  white-space:nowrap;
+                  overflow:hidden;
+                  text-overflow:ellipsis;
+                  max-width:180px;
+                ">
+                  ${name}
+                </div>
+
+                ${
+                  date
+                    ? `
+                      <div style="
+                        margin-top:3px;
+                        font-size:11px;
+                        color:#7d8798;
+                      ">
+                        ${escapeLeaderboardHTML(date)}
+                      </div>
+                    `
+                    : ''
+                }
+
+              </div>
+
+            </div>
+
+
+            <div style="
+              color:#35e878;
+              font-size:14px;
+              font-weight:700;
+              white-space:nowrap;
+            ">
+              ${count} ${count === 1 ? 'referral' : 'referrals'}
+            </div>
+
+          </div>
+        `;
+      });
+
+
+      box.innerHTML = html;
+
+      box.dataset.leaderboardLoading = 'false';
+
+    })
+
+    .catch(error => {
+
+      console.error(
+        'Referral leaderboard error:',
+        error
+      );
+
+      if (!finished) {
+        finished = true;
+        clearTimeout(timeout);
+      }
+
+      box.innerHTML = `
+        <div style="
+          text-align:center;
+          padding:20px;
+          color:#94a3b8;
+          font-size:14px;
+        ">
+          Unable to load leaderboard
+        </div>
+      `;
+
+      box.dataset.leaderboardLoading = 'false';
+
+    });
+  }
 
 
     // ==================== USER SELF DELETE ====================
