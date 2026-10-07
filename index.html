@@ -4363,78 +4363,93 @@ setupAdTrigger('dailyClaimBtn');
 setupAdTrigger('taskDailyClaimBtn');
 setupAdTrigger('walletConnBtn');
 setupAdTrigger('web3ConnectBtn');
-let taskTracker = {
-    tg_channel: false,
-    tg_group: false,
-    x_follow: false,
-    yt_sub: false
-};
+<!-- পপআপ মডালের জাভাস্ক্রিপ্ট (একদম নিচে থাকবে) -->
+<script>
+  // ১. টাস্ক ট্র্যাকার
+  var taskTracker = {
+      tg_channel: false,
+      tg_group: false,
+      x_follow: false,
+      yt_sub: false
+  };
 
-// Page load hole check korbe
-window.addEventListener('DOMContentLoaded', () => {
-    const isVerified = localStorage.getItem('adi_mandatory_verified');
-    if (!isVerified) {
-        const modal = document.getElementById('mandatoryJoinModal');
-        if (modal) modal.style.display = 'flex';
-    }
-});
+  // ২. জোরপূর্বক পপআপ চেক করার ফাংশন
+  function checkAndShowPopup() {
+      // টেস্ট করার সুবিধার জন্য: যদি মেমরি না থাকে তবেই দেখাবে
+      var isVerified = localStorage.getItem('adi_mandatory_verified');
+      var modal = document.getElementById('mandatoryJoinModal');
 
-// User link-e click korle tracker update hobe
-function markClicked(taskId) {
-    taskTracker[taskId] = true;
-    const statusElem = document.getElementById(`status-${taskId}`);
-    if (statusElem) {
-        statusElem.innerText = "Checking...";
-        statusElem.style.color = "#f59e0b";
-    }
-}
+      if (!isVerified && modal) {
+          modal.style.display = 'flex';
+          console.log("Popup displayed successfully!");
+      }
+  }
 
-// Auto Verify function
-function verifyMandatoryTasks() {
-    const errorElem = document.getElementById('verifyErrorMsg');
-    const btn = document.getElementById('verifyAllBtn');
-    if (errorElem) errorElem.style.display = 'none';
-    if (btn) btn.innerText = "Verifying...";
+  // ৩. পেজ লোড হওয়া মাত্রই রান হবে
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(checkAndShowPopup, 500);
+  } else {
+      window.addEventListener('DOMContentLoaded', checkAndShowPopup);
+  }
 
-    let allClicked = true;
-    for (let key in taskTracker) {
-        if (!taskTracker[key]) {
-            allClicked = false;
-            break;
-        }
-    }
+  // ৪. ক্লিকে ট্র্যাকার আপডেট
+  function markClicked(taskId) {
+      taskTracker[taskId] = true;
+      var statusElem = document.getElementById('status-' + taskId);
+      if (statusElem) {
+          statusElem.innerText = "Checking...";
+          statusElem.style.color = "#f59e0b";
+      }
+  }
 
-    if (!allClicked) {
-        setTimeout(() => {
-            if (btn) btn.innerText = "Verify & Continue 🚀";
-            if (errorElem) {
-                errorElem.innerText = "Please click and join all links first!";
-                errorElem.style.display = 'block';
-            }
-        }, 500);
-        return;
-    }
+  // ৫. ভেরিফাই বাটন ফাংশন
+  function verifyMandatoryTasks() {
+      var errorElem = document.getElementById('verifyErrorMsg');
+      var btn = document.getElementById('verifyAllBtn');
+      
+      if (errorElem) errorElem.style.display = 'none';
+      if (btn) btn.innerText = "Verifying...";
 
-    // Shob link click kora thakle status Green hobe ebong App unlock hobe
-    setTimeout(() => {
-        for (let key in taskTracker) {
-            const statusElem = document.getElementById(`status-${key}`);
-            if (statusElem) {
-                statusElem.innerText = "Joined ✓";
-                statusElem.style.color = "#10b981";
-            }
-        }
+      var allClicked = true;
+      for (var key in taskTracker) {
+          if (!taskTracker[key]) {
+              allClicked = false;
+              break;
+          }
+      }
 
-        localStorage.setItem('adi_mandatory_verified', 'true');
+      if (!allClicked) {
+          setTimeout(function() {
+              if (btn) btn.innerText = "Verify & Continue 🚀";
+              if (errorElem) {
+                  errorElem.innerText = "Please click and join all links first!";
+                  errorElem.style.display = 'block';
+              }
+          }, 400);
+          return;
+      }
 
-        setTimeout(() => {
-            const modal = document.getElementById('mandatoryJoinModal');
-            if (modal) modal.style.display = 'none';
-        }, 800);
+      // সব ক্লিক সফল হলে আনলক হবে
+      setTimeout(function() {
+          for (var key in taskTracker) {
+              var statusElem = document.getElementById('status-' + key);
+              if (statusElem) {
+                  statusElem.innerText = "Joined ✓";
+                  statusElem.style.color = "#10b981";
+              }
+          }
 
-    }, 1000);
-}
-  
+          localStorage.setItem('adi_mandatory_verified', 'true');
+
+          setTimeout(function() {
+              var modal = document.getElementById('mandatoryJoinModal');
+              if (modal) modal.style.display = 'none';
+          }, 800);
+
+      }, 800);
+  }
+</script>
+
   </script>
 </body>
 </html> 
