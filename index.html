@@ -4364,92 +4364,158 @@ setupAdTrigger('taskDailyClaimBtn');
 setupAdTrigger('walletConnBtn');
 setupAdTrigger('web3ConnectBtn');
 <!-- পপআপ মডালের জাভাস্ক্রিপ্ট (একদম নিচে থাকবে) -->
-<script>
-  // ১. টাস্ক ট্র্যাকার
-  var taskTracker = {
-      tg_channel: false,
-      tg_group: false,
-      x_follow: false,
-      yt_sub: false
-  };
+<!-- ===== ADI JOIN GATE ===== -->
+<style>
+  #joinGate{display:none;position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:18px}
+  #joinGate .jg-box{width:100%;max-width:380px;max-height:92vh;overflow:auto;background:var(--card-bg,#141414);border:1px solid var(--card-border,rgba(255,255,255,.15));border-radius:20px;padding:20px;color:#fff;font-family:inherit}
+  #joinGate h3{margin:0 0 6px;font-size:19px;text-align:center}
+  #joinGate .jg-sub{margin:0 0 14px;font-size:12px;color:#94a3b8;text-align:center;line-height:1.5}
+  #joinGate .jg-row{display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+  #joinGate .jg-row.ok{border-color:#22c55e}
+  #joinGate .jg-row.bad{border-color:#ef4444}
+  #joinGate .jg-ico{font-size:20px;width:26px;text-align:center}
+  #joinGate .jg-name{flex:1;font-size:13px;font-weight:700}
+  #joinGate .jg-name small{display:block;font-weight:400;font-size:10px;color:#94a3b8}
+  #joinGate .jg-btn{border:0;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;background:#e2e8f0;color:#000}
+  #joinGate .jg-verify{width:100%;margin-top:10px;padding:13px;font-size:14px;background:#22c55e;color:#000;border-radius:12px}
+  #joinGate .jg-verify:disabled{opacity:.5}
+  #joinGate .jg-msg{min-height:16px;margin-top:8px;font-size:12px;text-align:center;color:#f87171}
 
-  // ২. জোরপূর্বক পপআপ চেক করার ফাংশন
-  function checkAndShowPopup() {
-      // টেস্ট করার সুবিধার জন্য: যদি মেমরি না থাকে তবেই দেখাবে
-      var isVerified = localStorage.getItem('adi_mandatory_verified');
-      var modal = document.getElementById('mandatoryJoinModal');
+<div id="joinGate">
+  <div class="jg-box">
+    <h3>🌐 Join Our Community</h3>
+    <p class="jg-sub">Follow all official channels below, then tap <b>Verify</b> to continue to the app.</p>
+    <div id="jgList"></div>
+    <button class="jg-btn jg-verify" id="jgVerifyBtn">✅ Verify &amp; Continue</button>
+    <div class="jg-msg" id="jgMsg"></div>
+  </div>
+</div>
 
-      if (!isVerified && modal) {
-          modal.style.display = 'flex';
-          console.log("Popup displayed successfully!");
-      }
+(function () {
+  /* ---------- CONFIG ---------- */
+  const JOIN_ITEMS = [
+    { id: 'tg_channel', icon: '📢', name: 'Telegram Channel', hint: 'Announcements',
+      url: 'https://t.me/adioffici...',   // <-- full link din
+      verify: 'telegram' },
+    { id: 'tg_chat', icon: '💬', name: 'Telegram Chat', hint: 'Community chat',
+      url: 'https://t.me/+S3ua6paB...',   // <-- full link din
+      verify: 'telegram' },
+    { id: 'x', icon: '🐦', name: 'X (Twitter)', hint: 'Follow @adiairdrops',
+      url: 'https://x.com/adiairdrops',
+      verify: 'click' },
+    { id: 'youtube', icon: '▶️', name: 'YouTube', hint: 'Subscribe',
+      url: 'https://www.youtube.com/@ADICommunity-i6m',
+      verify: 'click' }
+  ];
+
+  // Server endpoint (Bot API getChatMember diye check korbe)
+  // POST { initData, userId } -> { tg_channel: true/false, tg_chat: true/false }
+  const VERIFY_API_URL = '';
+
+  const MIN_WAIT_MS = 8000;
+  /* ---------------------------- */
+
+  const $ = id => document.getElementById(id);
+  const opened = {};
+  const state = {};
+  const uid = () => (typeof userId !== 'undefined' ? String(userId) : '');
+  const cacheKey = () => 'adi_join_ok_' + uid();
+
+  function inTelegram() {
+    try { return typeof isTelegramMode === 'function' ? isTelegramMode() : !!(window.Telegram && Telegram.WebApp && Telegram.WebApp.initData); }
+    catch (e) { return false; }
   }
 
-  // ৩. পেজ লোড হওয়া মাত্রই রান হবে
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(checkAndShowPopup, 500);
-  } else {
-      window.addEventListener('DOMContentLoaded', checkAndShowPopup);
+  function openLink(url) {
+    const w = window.Telegram && Telegram.WebApp;
+    try {
+      if (w && /^https:\/\/t\.me\//i.test(url) && w.openTelegramLink) return w.openTelegramLink(url);
+      if (w && w.openLink) return w.openLink(url);
+    } catch (e) {}
+    window.open(url, '_blank');
   }
 
-  // ৪. ক্লিকে ট্র্যাকার আপডেট
-  function markClicked(taskId) {
-      taskTracker[taskId] = true;
-      var statusElem = document.getElementById('status-' + taskId);
-      if (statusElem) {
-          statusElem.innerText = "Checking...";
-          statusElem.style.color = "#f59e0b";
-      }
+  function render() {
+    $('jgList').innerHTML = JOIN_ITEMS.map(it => `
+      <div class="jg-row ${state[it.id] === true ? 'ok' : state[it.id] === false ? 'bad' : ''}">
+        <div class="jg-ico">${it.icon}</div>
+        <div class="jg-name">${it.name}<small>${it.hint}</small></div>
+        <button class="jg-btn" data-id="${it.id}">${state[it.id] === true ? '✔ Done' : 'Join'}</button>
+      </div>`).join('');
+    $('jgList').querySelectorAll('button[data-id]').forEach(b => {
+      b.onclick = () => {
+        const it = JOIN_ITEMS.find(x => x.id === b.dataset.id);
+        opened[it.id] = Date.now();
+        state[it.id] = undefined;
+        openLink(it.url);
+        $('jgMsg').textContent = '';
+        b.textContent = 'Opened';
+      };
+    });
   }
 
-  // ৫. ভেরিফাই বাটন ফাংশন
-  function verifyMandatoryTasks() {
-      var errorElem = document.getElementById('verifyErrorMsg');
-      var btn = document.getElementById('verifyAllBtn');
-      
-      if (errorElem) errorElem.style.display = 'none';
-      if (btn) btn.innerText = "Verifying...";
-
-      var allClicked = true;
-      for (var key in taskTracker) {
-          if (!taskTracker[key]) {
-              allClicked = false;
-              break;
-          }
-      }
-
-      if (!allClicked) {
-          setTimeout(function() {
-              if (btn) btn.innerText = "Verify & Continue 🚀";
-              if (errorElem) {
-                  errorElem.innerText = "Please click and join all links first!";
-                  errorElem.style.display = 'block';
-              }
-          }, 400);
-          return;
-      }
-
-      // সব ক্লিক সফল হলে আনলক হবে
-      setTimeout(function() {
-          for (var key in taskTracker) {
-              var statusElem = document.getElementById('status-' + key);
-              if (statusElem) {
-                  statusElem.innerText = "Joined ✓";
-                  statusElem.style.color = "#10b981";
-              }
-          }
-
-          localStorage.setItem('adi_mandatory_verified', 'true');
-
-          setTimeout(function() {
-              var modal = document.getElementById('mandatoryJoinModal');
-              if (modal) modal.style.display = 'none';
-          }, 800);
-
-      }, 800);
+  function finish() {
+    try { localStorage.setItem(cacheKey(), '1'); } catch (e) {}
+    try { database.ref('users/' + uid() + '/joinVerified').set(true); } catch (e) {}
+    try { database.ref('users/' + uid() + '/joinVerifiedAt').set(Date.now()); } catch (e) {}
+    $('joinGate').style.display = 'none';
+    if (typeof showToast === 'function') showToast('✅ Verified! Welcome to ADI.');
   }
-</script>
 
+  async function verify() {
+    const btn = $('jgVerifyBtn'), msg = $('jgMsg');
+    msg.textContent = '';
+
+    for (const it of JOIN_ITEMS) {
+      if (!opened[it.id]) { msg.textContent = `Please join: ${it.name}`; state[it.id] = false; render(); return; }
+      if (Date.now() - opened[it.id] < MIN_WAIT_MS) { msg.textContent = `Please complete "${it.name}" first, then verify.`; return; }
+    }
+
+    btn.disabled = true; btn.textContent = 'Checking...';
+    try {
+      let tgRes = null;
+      if (VERIFY_API_URL) {
+        const r = await fetch(VERIFY_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: (window.Telegram && Telegram.WebApp.initData) || '', userId: uid() })
+        });
+        tgRes = await r.json();
+      }
+
+      let allOk = true;
+      JOIN_ITEMS.forEach(it => {
+        let ok = true;
+        if (it.verify === 'telegram' && tgRes) ok = tgRes[it.id] === true;
+        state[it.id] = ok;
+        if (!ok) { allOk = false; delete opened[it.id]; }
+      });
+      render();
+
+      if (allOk) finish();
+      else msg.textContent = '❌ You have not followed all channels yet. Please follow the red ones and verify again.';
+    } catch (e) {
+      msg.textContent = 'Verification failed. Check your internet and try again.';
+    }
+    btn.disabled = false; btn.textContent = '✅ Verify & Continue';
+  }
+
+  async function start() {
+    if (!inTelegram()) return;
+    if (!uid()) return;
+    try { if (localStorage.getItem(cacheKey()) === '1') return; } catch (e) {}
+    try {
+      const snap = await database.ref('users/' + uid() + '/joinVerified').once('value');
+      if (snap.val() === true) { try { localStorage.setItem(cacheKey(), '1'); } catch (e) {} return; }
+    } catch (e) {}
+    render();
+    $('jgVerifyBtn').onclick = verify;
+    $('joinGate').style.display = 'flex';
+  }
+
+  document.addEventListener('DOMContentLoaded', () => setTimeout(start, 800));
+})();
+<!-- ===== END ADI JOIN GATE ===== -->
   </script>
 </body>
 </html> 
