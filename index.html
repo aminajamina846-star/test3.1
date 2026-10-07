@@ -3832,46 +3832,65 @@
     if (!box || typeof database === 'undefined' || !database.ref) return;
 
     database.ref('users').on('value', snap => {
-        const users = snap.val() || {};
-        const list = Object.keys(users).map(uid => {
-            const u = users[uid] || {};
-            const refs = u.referrals && typeof u.referrals === 'object' ? Object.keys(u.referrals).length : 0;
-            return {
-                uid: uid,
-                isBanned: u.isBanned === true,
-                count: refs,
-                first: u.firstReferralAt || Infinity,
-                userName: u.userName || u.name || 'User'
-            };
-        }).filter(u => !u.isBanned && u.count > 0);
+        try {
+            const users = snap.val() || {};
+            const list = [];
 
-        // সর্টিং লজিক (রেফারেল বেশি থাকলে উপরে, সমান হলে সময় দিয়ে)
-        list.sort((a, b) => {
-            if (b.count !== a.count) {
-                return b.count - a.count;
+            Object.keys(users).forEach(uid => {
+                const u = users[uid] || {};
+                
+                // Mengira jumlah rujukan secara selamat
+                let refCount = 0;
+                if (u.referrals) {
+                    if (typeof u.referrals === 'object') {
+                        refCount = Object.keys(u.referrals).length;
+                    } else if (typeof u.referrals === 'number') {
+                        refCount = u.referrals;
+                    }
+                }
+
+                // Hanya masukkan pengguna yang tidak dibanned dan mempunyai sekurang-kurangnya 1 rujukan
+                if (!u.isBanned && refCount > 0) {
+                    list.push({
+                        uid: uid,
+                        count: refCount,
+                        first: Number(u.firstReferralAt) || Infinity,
+                        userName: u.userName || u.name || 'User'
+                    });
+                }
+            });
+
+            // Susunan Carta: Rujukan terbanyak di atas, jika sama pilih yang terdahulu
+            list.sort((a, b) => {
+                if (b.count !== a.count) {
+                    return b.count - a.count;
+                }
+                return a.first - b.first;
+            });
+
+            if (list.length === 0) {
+                box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referral data found</div>`;
+                return;
             }
-            return a.first - b.first;
-        });
 
-        if (list.length === 0) {
-            box.innerHTML = `<div style="text-align:center;color:#64748b;font-size:11px;padding:8px;">No referral data found</div>`;
-            return;
+            // Paparkan Top 10
+            box.innerHTML = list.slice(0, 10).map((x, i) => {
+                const safeName = String(x.userName).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-weight:bold;color:#e2e8f0;width:18px;">${i + 1}</span>
+                        <span style="color:#f8fafc;font-size:13px;">${safeName}</span>
+                    </div>
+                    <span style="color:#10b981;font-weight:bold;font-size:12px;">${x.count} referrals</span>
+                </div>`;
+            }).join('');
+
+        } catch (err) {
+            console.error("Leaderboard Error:", err);
+            box.innerHTML = `<div style="text-align:center;color:#ef4444;font-size:11px;padding:8px;">Failed to load leaderboard</div>`;
         }
-
-        // লিডারবোর্ড UI রেন্ডার করা
-        box.innerHTML = list.slice(0, 10).map((x, i) => {
-            const safeName = String(x.userName).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <span style="font-weight:bold;color:#e2e8f0;width:18px;">${i + 1}</span>
-                    <span style="color:#f8fafc;font-size:13px;">${safeName}</span>
-                </div>
-                <span style="color:#10b981;font-weight:bold;font-size:12px;">${x.count} referrals</span>
-            </div>`;
-        }).join('');
     });
 }
-
 
 
     // ==================== USER SELF DELETE ====================
