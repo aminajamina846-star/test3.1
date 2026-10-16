@@ -606,6 +606,16 @@ button,input,select,textarea{font:inherit}
     <div class="dashboard-live-card"><div class="dl-label">Active Tasks</div><div class="dl-value" id="homeActiveTasks">0</div><small>Published tasks</small></div>
     <div class="dashboard-live-card"><div class="dl-label">Balance Total</div><div class="dl-value" id="homeTotalBalance">0</div><small>Current user balance</small></div>
   </div>
+  <div class="admin-card">
+    <h2>🆕 Today's New Users</h2>
+    <div id="recentUsers">
+        Loading users...
+    </div>
+
+    <button onclick="loadRecentUsers()">
+        🔄 Refresh Users
+    </button>
+  </div>
   <div class="grid-container" style="margin-top:14px">
     <div class="card"><h3>🏆 Referral Leaderboard</h3><div id="homeReferralLeaderboard" class="table-responsive">Loading…</div></div>
     <div class="card">
@@ -2197,7 +2207,72 @@ button,input,select,textarea{font:inherit}
       });
       html+='</table>'; container.innerHTML=html;
     }
-    
+    async function loadRecentUsers() {
+    const usersContainer = document.getElementById("recentUsers");
+
+    usersContainer.innerHTML = "Loading users...";
+
+    try {
+        // আজকের শুরু
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        // আগামীকালের শুরু
+        const startOfTomorrow = new Date(startOfDay);
+        startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+        const snapshot = await firebase.firestore()
+            .collection("users")
+            .where(
+                "joinedAt",
+                ">=",
+                firebase.firestore.Timestamp.fromDate(startOfDay)
+            )
+            .where(
+                "joinedAt",
+                "<",
+                firebase.firestore.Timestamp.fromDate(startOfTomorrow)
+            )
+            .orderBy("joinedAt", "desc")
+            .get();
+
+        if (snapshot.empty) {
+            usersContainer.innerHTML =
+                "<p>আজকে কোনো নতুন ইউজার Join করেনি।</p>";
+            return;
+        }
+
+        usersContainer.innerHTML = "";
+
+        snapshot.forEach(doc => {
+            const user = doc.data();
+
+            const item = document.createElement("div");
+            item.className = "recent-user";
+
+            const name = document.createElement("strong");
+            name.textContent = user.username || "Unknown User";
+
+            const id = document.createElement("p");
+            id.textContent = "User ID: " + (user.userId || doc.id);
+
+            const date = document.createElement("p");
+            date.textContent = user.joinedAt
+                ? user.joinedAt.toDate().toLocaleString()
+                : "Date unavailable";
+
+            item.append(name, id, date);
+            usersContainer.appendChild(item);
+        });
+
+    } catch (error) {
+        console.error("Failed to load users:", error);
+        usersContainer.textContent =
+            "Users load করতে সমস্যা হয়েছে।";
+    }
+}
+
+loadRecentUsers();
     // Dynamic Custom Feature Injector
     function injectCustomDynamicFeature() {
       const key = document.getElementById('customFeatureKey').value.trim();
